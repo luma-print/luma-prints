@@ -28,14 +28,15 @@ Node 18+. Without `STRIPE_SECRET_KEY` the site runs in **demo mode**: orders are
 ## Environment variables
 | Var | Required | Purpose |
 |---|---|---|
-| `ADMIN_PASSWORD` | **yes** (no default – /admin is disabled until set) | Password for /admin (any username) |
+| `ADMIN_PASSWORD` | **yes** (no default – /admin is disabled until set) | Password for /admin (any username). If unset, read from the Render secret file `/etc/secrets/admin_password` (trimmed) |
+| `BREVO_API_KEY` | recommended on Render | Sends all emails via Brevo's HTTPS API (Render's free plan blocks SMTP). When set, SMTP is not used |
 | `BASE_URL` | yes in production | Public URL, used for Stripe return links |
 | `STRIPE_SECRET_KEY` | to take payments | `sk_test_…` for testing, `sk_live_…` to go live |
 | `SHIPPING_FEE` | no (default 5.00, placeholder) | Flat shipping fee |
 | `DATA_DIR` | recommended in prod | Folder for orders/uploads (point at a persistent disk) |
 | `OWNER_EMAIL` | no (default `Luma.prints1@gmail.com`) | Where order + contact emails go |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | to send email | See *Email setup* below. No `SMTP_HOST` = no emails (orders still saved) |
-| `MAX_ATTACH_MB` | no (default 17) | Max photos attached per order email; extra photos become admin download links |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | to send email | See *Email setup* below. SMTP fallback, used only if `BREVO_API_KEY` is unset. Neither set = no emails (orders still saved) |
+| `MAX_ATTACH_MB` | no (default 10) | Max photos attached per order email; extra photos become admin download links |
 
 ## Where orders go
 - `data/orders/<ORDER-ID>.json` – customer, delivery, items, totals, payment + status
@@ -55,7 +56,14 @@ Payment is confirmed when Stripe redirects the customer back (`/api/stripe/retur
 - Your real shipping fee, and a strong `ADMIN_PASSWORD`.
 
 ## Email setup (Gmail) – full Node site
-Every order emails **Luma.prints1@gmail.com** with: customer name/email/phone, each photo's size, finish and quantity, totals, pickup or shipping address, and the **photo files attached** (up to `MAX_ATTACH_MB`, default 17 MB — Gmail rejects mail over 25 MB after encoding; any photos that don't fit are listed as password-protected `/admin` download links). Reply-to is set to the customer. The customer gets a confirmation email; with Stripe you also get a short "PAID" email after payment. Contact-form messages are emailed to the same address.
+Every order emails **Luma.prints1@gmail.com** with: customer name/email/phone, each photo's size, finish and quantity, totals, pickup or shipping address, and the **photo files attached** (up to `MAX_ATTACH_MB`, default 10 MB — Brevo caps a message at ~20 MB encoded; any photos that don't fit are listed as password-protected `/admin` download links). Reply-to is set to the customer. The customer gets a confirmation email; with Stripe you also get a short "PAID" email after payment. Contact-form messages are emailed to the same address.
+
+### Brevo (recommended; required on Render free plan)
+Render's free plan blocks outbound SMTP, so use Brevo's HTTPS API:
+1. Create a free account at brevo.com, then **Senders, Domains & Dedicated IPs → Senders** and add/verify `Luma.prints1@gmail.com` as a sender.
+2. **SMTP & API → API Keys → Generate a new API key**.
+3. In Render → your service → **Environment**, add `BREVO_API_KEY=<key>` (and optionally `SMTP_FROM=Luma.prints1@gmail.com`), save, and let it redeploy.
+Failures are logged as `Email failed: Brevo <status>: <error body>` in Render's logs.
 
 1. Sign in to Luma.prints1@gmail.com → https://myaccount.google.com/security → turn on **2-Step Verification** (required for app passwords).
 2. Go to https://myaccount.google.com/apppasswords → name it "Luma Prints website" → **Create** → copy the 16-character password.
@@ -68,5 +76,5 @@ Note: Gmail allows ~500 emails/day from a personal account — plenty for a smal
 Netlify site → **Site configuration → Forms → Form notifications → Add notification → Email notification** → event "New form submission", form **Any form** (or add one each for `order` and `contact`) → email **Luma.prints1@gmail.com** → Save. Each email contains all form fields; uploaded photos appear as **download links** (not attachments). Submissions also stay under *Forms* in the Netlify dashboard. Also enable *Forms → Form detection* if it is off.
 
 ## Deploy on Render (render.yaml included)
-Render dashboard → **New → Blueprint** (or Web Service) → paste this public repo URL → it reads `render.yaml`. Fill in the secret values when prompted (`ADMIN_PASSWORD`, `SMTP_PASS`, optional `STRIPE_SECRET_KEY`), then set `BASE_URL` to the `https://….onrender.com` URL Render gives you and redeploy.
+Render dashboard → **New → Blueprint** (or Web Service) → paste this public repo URL → it reads `render.yaml`. Fill in the secret values when prompted (`ADMIN_PASSWORD`, `BREVO_API_KEY`, optional `STRIPE_SECRET_KEY`), then set `BASE_URL` to the `https://….onrender.com` URL Render gives you and redeploy.
 **Free plan caveat:** free web services have no persistent disk and sleep when idle — uploaded photos/orders stored on the server are wiped on each redeploy/restart. Orders are still emailed to you with photos attached, so the email is your record. For permanent storage upgrade to a paid instance with a Disk mounted at e.g. `/var/data` and set `DATA_DIR=/var/data`.

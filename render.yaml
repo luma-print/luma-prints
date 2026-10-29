@@ -24,10 +24,12 @@ services:
       - key: SHIPPING_FEE
         value: "5.00"
       - key: MAX_ATTACH_MB
-        value: "17"
+        value: "10"
       - key: BASE_URL
         sync: false
       - key: ADMIN_PASSWORD
+        sync: false
+      - key: BREVO_API_KEY
         sync: false
       - key: SMTP_PASS
         sync: false

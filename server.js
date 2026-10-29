@@ -3,7 +3,8 @@ const PORT = process.env.PORT || 3000;
 const DATA = process.env.DATA_DIR || path.join(__dirname, 'data');
 const ORDERS = path.join(DATA, 'orders'), UPLOADS = path.join(DATA, 'uploads');
 [ORDERS, UPLOADS].forEach(d => fs.mkdirSync(d, { recursive: true }));
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD; // required for /admin (no default)
+// required for /admin (no default). Falls back to a Render secret file if the env var is unset.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (() => { try { return fs.readFileSync(process.env.ADMIN_PASSWORD_FILE || '/etc/secrets/admin_password', 'utf8').trim() || undefined; } catch { return undefined; } })();
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SHIPPING_FEE = parseFloat(process.env.SHIPPING_FEE || '5.00');
 const PRICES = require('./public/prices.js');
@@ -11,7 +12,7 @@ const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'Luma.prints1@gmail.com';
-const MAX_ATTACH = (parseFloat(process.env.MAX_ATTACH_MB || '17')) * 1024 * 1024;
+const MAX_ATTACH = (parseFloat(process.env.MAX_ATTACH_MB || '10')) * 1024 * 1024;
 let mailer = null;
 if (process.env.SMTP_HOST) {
   const port = +(process.env.SMTP_PORT || 465);
@@ -25,9 +26,23 @@ const itemLine = i => `${i.qty} x ${i.size} ${i.finish} â€“ ${i.originalName} â€
 const summary = o => `Order: ${o.id}\nCustomer: ${o.customer.name}\nEmail: ${o.customer.email}\nPhone: ${o.customer.phone || '-'}\n` +
   `Delivery: ${o.delivery === 'shipping' ? 'SHIPPING to:\n' + o.address : 'PICKUP'}\n${o.notes ? 'Notes: ' + o.notes + '\n' : ''}\nItems:\n` +
   o.items.map(itemLine).join('\n') + `\n\nSubtotal: ${money(o.subtotal)}\nShipping: ${money(o.shipping)}\nTotal: ${money(o.total)}\nPayment: ${o.payment}`;
-async function send(msg) { if (!mailer) return; try { await mailer.sendMail({ from: FROM(), ...msg }); } catch (e) { console.error('Email failed:', e.message); } }
+const BREVO_KEY = process.env.BREVO_API_KEY;
+const BREVO_URL = process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email';
+const canMail = () => !!(BREVO_KEY || mailer);
+async function sendBrevo(msg) {
+  const body = { sender: { name: 'Luma Prints', email: process.env.SMTP_FROM || OWNER_EMAIL }, to: [{ email: msg.to }], subject: msg.subject, textContent: msg.text };
+  if (msg.replyTo) body.replyTo = { email: msg.replyTo };
+  if (msg.attachments && msg.attachments.length) body.attachment = msg.attachments.map(a => ({ name: a.filename, content: fs.readFileSync(a.path).toString('base64') }));
+  const r = await fetch(BREVO_URL, { method: 'POST', headers: { 'api-key': BREVO_KEY, 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(`Brevo ${r.status}: ${await r.text()}`);
+}
+async function send(msg) {
+  if (!canMail()) return;
+  try { if (BREVO_KEY) await sendBrevo(msg); else await mailer.sendMail({ from: FROM(), ...msg }); }
+  catch (e) { console.error('Email failed:', e.message); }
+}
 async function notify(order, why) {
-  if (!mailer) return;
+  if (!canMail()) return;
   if (why === 'PAID') return send({ to: OWNER_EMAIL, subject: `PAID: Luma Prints order ${order.id} (${money(order.total)})`, text: summary(order) + `\n\nAdmin: ${BASE_URL}/admin` });
   // owner email with photos attached up to MAX_ATTACH; the rest as admin links
   let used = 0; const attachments = [], links = [];
