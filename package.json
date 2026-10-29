@@ -1,0 +1,22 @@
+{
+  "name": "luma-prints",
+  "version": "1.0.0",
+  "description": "Luma Prints photo printing website",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.3.0",
+    "multer": "^2.5.0",
+    "nodemailer": "^10.2.1",
+    "stripe": "^23.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

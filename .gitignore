@@ -1,0 +1,12 @@
+node_modules/
+data/
+orders/
+uploads/
+messages/
+.env
+.env.*
+!.env.example
+*.log
+*.eml
+.DS_Store
+screenshots/admin.png
