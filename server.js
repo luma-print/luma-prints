@@ -10,6 +10,8 @@ const SHIPPING_FEE = parseFloat(process.env.SHIPPING_FEE || '5.00');
 const PRICES = require('./public/prices.js');
 const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive: true });
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+const VENMO_USERNAME = (process.env.VENMO_USERNAME || 'moroni-guerrero').replace(/^@/, '');
+const X_MONEY_HANDLE = (process.env.X_MONEY_HANDLE || '').replace(/^@/, '');
 
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'Luma.prints1@gmail.com';
 const MAX_ATTACH = (parseFloat(process.env.MAX_ATTACH_MB || '10')) * 1024 * 1024;
@@ -56,7 +58,7 @@ async function notify(order, why) {
     text: summary(order) + extra + `\n\nAll orders: ${BASE_URL}/admin`, attachments });
   await send({ to: order.customer.email, replyTo: OWNER_EMAIL, subject: `We received your Luma Prints order ${order.id}`,
     text: `Hi ${order.customer.name},\n\nThank you for your order! Here is a summary:\n\n` + summary(order) +
-      `\n\n${order.payment === 'pending' ? 'Once your payment is complete we will start printing.' : order.payment === 'paid' ? 'Your payment is confirmed.' : 'We will contact you to arrange payment.'}\nQuestions? Just reply to this email.\n\nLuma Prints` });
+      `\n\n${order.paymentMethod === 'venmo' ? 'Please send ' + money(order.total) + ' on Venmo to @' + VENMO_USERNAME + ' and put ' + order.id + ' in the note. Then open your order link and tap I\'ve paid.' : order.paymentMethod === 'xmoney' ? 'Please send ' + money(order.total) + ' with X Money to @' + X_MONEY_HANDLE + ' and put ' + order.id + ' in the note.' : order.payment === 'pending' ? 'Once your payment is complete we will start printing.' : order.payment === 'paid' || String(order.payment).includes('customer reported') ? 'Your payment is confirmed or reported. We will verify and start printing.' : 'We will contact you to arrange payment.'}\nQuestions? Just reply to this email.\n\nLuma Prints` });
 }
 const loadOrder = id => JSON.parse(fs.readFileSync(path.join(ORDERS, id + '.json')));
 const saveOrder = o => fs.writeFileSync(path.join(ORDERS, o.id + '.json'), JSON.stringify(o, null, 2));
@@ -71,7 +73,7 @@ const upload = multer({
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/api/config', (q, r) => r.json({ shippingFee: SHIPPING_FEE, demo: !stripe }));
+app.get('/api/config', (q, r) => r.json({ shippingFee: SHIPPING_FEE, demo: !stripe, stripe: !!stripe, venmoUsername: VENMO_USERNAME, xMoneyHandle: X_MONEY_HANDLE || null }));
 app.post('/api/contact', express.urlencoded({ extended: false }), express.json(), (req, res) => {
   const { name, email, phone, message } = req.body || {};
   if (!name || !email || !message) return res.status(400).json({ error: 'Name, email and message are required.' });
@@ -98,13 +100,34 @@ app.post('/api/orders', upload.array('photos'), async (req, res) => {
     const tbd = lines.some(l => l.priceTBD);
     const subtotal = +lines.reduce((s, l) => s + l.lineTotal, 0).toFixed(2);
     const shipping = delivery === 'shipping' ? SHIPPING_FEE : 0;
+    const payMethod = ['venmo', 'xmoney', 'card', 'applepay'].includes(b.payMethod) ? b.payMethod : 'venmo';
+    if (payMethod === 'xmoney' && !X_MONEY_HANDLE) throw new Error('X Money is not available yet.');
+    if ((payMethod === 'card' || payMethod === 'applepay') && !stripe) throw new Error('Card and Apple Pay need Stripe. Choose Venmo for now.');
+    const accessToken = crypto.randomBytes(24).toString('hex');
+    let paymentStatus;
+    if (tbd) paymentStatus = 'inquiry - price to be confirmed';
+    else if (payMethod === 'venmo') paymentStatus = 'awaiting Venmo';
+    else if (payMethod === 'xmoney') paymentStatus = 'awaiting X Money';
+    else paymentStatus = 'pending';
     const order = { id: 'LP-' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(2).toString('hex').toUpperCase(),
       createdAt: new Date().toISOString(), customer: { name: b.name, email: b.email, phone: b.phone || '' },
       delivery, address: delivery === 'shipping' ? b.address : '', notes: b.notes || '', items: lines, subtotal, shipping,
-      total: +(subtotal + shipping).toFixed(2), payment: tbd ? 'inquiry - price to be confirmed' : stripe ? 'pending' : 'unpaid - payment pending (demo mode)', status: 'new' };
+      total: +(subtotal + shipping).toFixed(2), payment: paymentStatus, paymentMethod: payMethod, accessToken, status: 'new' };
     saveOrder(order);
     if (tbd) { notify(order, 'new inquiry (price to confirm)'); return res.json({ redirect: `/success.html?order=${order.id}&quote=1` }); }
-    if (!stripe) { notify(order, 'new order (unpaid, demo mode)'); return res.json({ redirect: `/success.html?order=${order.id}&demo=1` }); }
+    if (payMethod === 'venmo' || payMethod === 'xmoney') {
+      const who = payMethod === 'venmo' ? `Venmo @${VENMO_USERNAME}` : `X Money @${X_MONEY_HANDLE}`;
+      const payHint = `
+
+CUSTOMER PAYMENT: ask them to send ${money(order.total)} via ${who}. Note/memo: ${order.id}
+Success page: ${BASE_URL}/success.html?order=${order.id}&t=${accessToken}&method=${payMethod}`;
+      notify(order, `new order (awaiting ${payMethod === 'venmo' ? 'Venmo' : 'X Money'})`);
+      // Extra owner tip with pay link (notify already sent summary)
+      send({ to: OWNER_EMAIL, replyTo: order.customer.email, subject: `Pay instructions for ${order.id}`,
+        text: `Customer should pay ${money(order.total)} via ${who}.
+Note: ${order.id}${payHint}` });
+      return res.json({ redirect: `/success.html?order=${order.id}&t=${accessToken}&method=${payMethod}` });
+    }
     const line_items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} ${PRICES[l.finish].label}` } } }));
     if (shipping) line_items.push({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.round(shipping * 100), product_data: { name: 'Shipping' } } });
     const session = await stripe.checkout.sessions.create({ mode: 'payment', line_items, customer_email: order.customer.email,
@@ -122,6 +145,34 @@ app.get('/api/stripe/return', async (req, res) => {
     if (s.payment_status === 'paid' && o.payment !== 'paid') { o.payment = 'paid'; saveOrder(o); notify(o, 'PAID'); }
     res.redirect(`/success.html?order=${o.id}`);
   } catch (e) { res.redirect('/success.html'); }
+});
+
+app.get('/api/orders/:id', (req, res) => {
+  try {
+    const id = req.params.id.replace(/[^\w-]/g, '');
+    const o = loadOrder(id);
+    const t = String(req.query.t || '');
+    if (!o.accessToken || t !== o.accessToken) return res.status(403).json({ error: 'Invalid or missing link.' });
+    res.json({ id: o.id, total: o.total, totalLabel: money(o.total), payment: o.payment, paymentMethod: o.paymentMethod || 'venmo',
+      venmoUsername: VENMO_USERNAME, xMoneyHandle: X_MONEY_HANDLE || null });
+  } catch { res.status(404).json({ error: 'Order not found.' }); }
+});
+app.post('/api/orders/:id/paid', express.json(), async (req, res) => {
+  try {
+    const id = req.params.id.replace(/[^\w-]/g, '');
+    const o = loadOrder(id);
+    const t = String((req.body && req.body.t) || '');
+    if (!o.accessToken || t !== o.accessToken) return res.status(403).json({ error: 'Invalid or missing link.' });
+    if (o.payment === 'paid' || (o.stripeSession && o.payment === 'paid')) return res.status(400).json({ error: 'This order is already paid via Stripe.' });
+    if (String(o.payment).includes('customer reported')) return res.json({ ok: true, already: true });
+    const method = (req.body && req.body.method) || o.paymentMethod || 'venmo';
+    const label = method === 'xmoney' ? 'paid - X Money (customer reported)' : 'paid - Venmo (customer reported)';
+    o.payment = label; o.customerReportedPaidAt = new Date().toISOString();
+    saveOrder(o);
+    await send({ to: OWNER_EMAIL, replyTo: o.customer.email, subject: `Customer reported paid: ${o.id} (${money(o.total)})`,
+      text: summary(o) + `\n\nCustomer tapped "I've paid" (${label}). Verify in your Venmo/X Money app before printing.\nAdmin: ${BASE_URL}/admin` });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message || 'Could not update order.' }); }
 });
 
 // ---- admin (HTTP Basic auth) ----

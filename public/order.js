@@ -1,6 +1,25 @@
 let cfg, list = [];
 const $ = s => document.querySelector(s), P = LUMA_PRICES;
-fetch('/api/config').then(r => r.json()).then(c => { cfg = c; $('#sf').textContent = c.shippingFee.toFixed(2); $('#demo').hidden = !c.demo; render(); });
+fetch('/api/config').then(r => r.json()).then(c => {
+  cfg = c;
+  $('#sf').textContent = c.shippingFee.toFixed(2);
+  $('#demo').hidden = !c.demo;
+  const xm = $('#pay-xmoney'), xn = $('#xmoney-note');
+  if (c.xMoneyHandle) {
+    xm.disabled = false;
+    xn.textContent = '(@' + c.xMoneyHandle + ')';
+  } else {
+    xm.disabled = true;
+    xn.textContent = '(@handle coming soon)';
+  }
+  if (c.stripe) {
+    $('#pay-card').disabled = false;
+    $('#pay-card').parentElement.querySelector('span').textContent = '';
+    $('#pay-apple').disabled = false;
+    $('#pay-apple').parentElement.querySelector('span').textContent = '(via Stripe Checkout)';
+  }
+  render();
+});
 if (location.search.includes('canceled')) $('#cancel').hidden = false;
 const add = files => { [...files].filter(f => f.type.startsWith('image/')).forEach(f => list.push({ file: f, finish: 'standard', size: '4x6', qty: 1, url: URL.createObjectURL(f) })); render(); };
 $('#files').onchange = e => { add(e.target.files); e.target.value = ''; };
@@ -9,6 +28,7 @@ d.ondragover = e => { e.preventDefault(); d.classList.add('over'); }; d.ondragle
 d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); add(e.dataTransfer.files); };
 document.querySelectorAll('[name=delivery]').forEach(r => r.onchange = () => { $('#addr').hidden = !ship(); $('#addr').required = ship(); total(); });
 const ship = () => $('[name=delivery]:checked').value === 'shipping';
+const payMethod = () => ($('[name=payMethod]:checked') || {}).value || 'venmo';
 const fmt = v => v == null ? '[SET PRICE]' : '$' + v.toFixed(2);
 const sizeOpts = it => Object.entries(P[it.finish].sizes).map(([k, v]) => `<option value="${k}" ${k === it.size ? 'selected' : ''}>${k} – ${fmt(v)}</option>`).join('');
 function render() {
@@ -34,13 +54,16 @@ function total() {
   $('#tbd').hidden = !tbd;
   $('#count').textContent = `${n} print${n === 1 ? '' : 's'}${ship() && list.length ? ' + shipping' : ''}${tbd ? ' · price TBD' : ''}`;
   $('#total').textContent = '$' + t.toFixed(2) + (tbd ? '+' : ''); $('#pay').disabled = !list.length;
-  $('#pay').textContent = tbd ? 'Send inquiry' : cfg.demo ? 'Place order' : 'Pay & place order';
+  const m = payMethod();
+  $('#pay').textContent = tbd ? 'Send inquiry' : (m === 'card' || m === 'applepay') && cfg.stripe ? 'Pay & place order' : 'Place order';
 }
+document.querySelectorAll('[name=payMethod]').forEach(r => r.onchange = total);
 $('#f').onsubmit = async e => {
   e.preventDefault(); $('#err').hidden = true; $('#pay').disabled = true; $('#pay').textContent = 'Uploading…';
   const fd = new FormData($('#f'));
   list.forEach(it => fd.append('photos', it.file, it.file.name));
   fd.append('items', JSON.stringify(list.map(it => ({ finish: it.finish, size: it.size, qty: it.qty }))));
+  fd.append('payMethod', payMethod());
   try { const r = await fetch('/api/orders', { method: 'POST', body: fd }), j = await r.json(); if (!r.ok) throw new Error(j.error); location.href = j.redirect; }
   catch (x) { $('#err').textContent = x.message; $('#err').hidden = false; total(); }
 };

@@ -51,3 +51,5 @@ label.opt{display:inline-flex;gap:8px;margin-right:24px;align-items:center}label
 @media(max-width:860px){.item{grid-template-columns:56px 1fr 1fr 70px;grid-template-areas:"img nm nm rm" "fin fin sz sz" "qty qty lt lt"}
  .item img{grid-area:img;width:56px;height:56px}.item .nm{grid-area:nm}.item .fin{grid-area:fin;width:100%}.item .sz{grid-area:sz;width:100%}.item input{grid-area:qty}.item .lt{grid-area:lt}.item .rm{grid-area:rm;justify-self:end}}
 .gallery{grid-auto-flow:dense}
+
+.ig{display:inline-flex!important;align-items:center;gap:8px;margin-top:8px;text-decoration:none}.ig:hover span{text-decoration:underline}.ig-ico{flex:none;opacity:.9}dd .ig{margin-top:0;color:inherit}
