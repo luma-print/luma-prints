@@ -11,7 +11,7 @@ const PRICES = require('./public/prices.js');
 const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive: true });
 const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
 const VENMO_USERNAME = (process.env.VENMO_USERNAME || 'moroni-guerrero').replace(/^@/, '');
-const X_MONEY_HANDLE = (process.env.X_MONEY_HANDLE || '').replace(/^@/, '');
+const X_MONEY_HANDLE = (process.env.X_MONEY_HANDLE || 'm59676').replace(/^@/, '');
 
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'Luma.prints1@gmail.com';
 const MAX_ATTACH = (parseFloat(process.env.MAX_ATTACH_MB || '10')) * 1024 * 1024;
