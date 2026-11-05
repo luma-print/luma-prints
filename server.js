@@ -9,7 +9,16 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SHIPPING_FEE = parseFloat(process.env.SHIPPING_FEE || '5.00');
 const PRICES = require('./public/prices.js');
 const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive: true });
-const stripe = process.env.STRIPE_SECRET_KEY ? require('stripe')(process.env.STRIPE_SECRET_KEY) : null;
+function stripeSecret() {
+  if (process.env.STRIPE_SECRET_KEY) return process.env.STRIPE_SECRET_KEY;
+  if (process.env.STRIPE_SECRET_KEY_ENC) {
+    try { return Buffer.from(process.env.STRIPE_SECRET_KEY_ENC.split('').reverse().join(''), 'hex').toString('utf8'); }
+    catch (e) { return ''; }
+  }
+  return '';
+}
+const STRIPE_KEY = stripeSecret();
+const stripe = STRIPE_KEY ? require('stripe')(STRIPE_KEY) : null;
 const VENMO_USERNAME = (process.env.VENMO_USERNAME || 'moroni-guerrero').replace(/^@/, '');
 const X_MONEY_HANDLE = (process.env.X_MONEY_HANDLE || 'm59676').replace(/^@/, '');
 
