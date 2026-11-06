@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160" role="img" aria-label="Luma Prints — Stacked Sheets">
+  <defs>
+    <linearGradient id="brass02" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F09A2B"/>
+      <stop offset="100%" stop-color="#D67506"/>
+    </linearGradient>
+    <filter id="softShadow02" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- Mark: layered print sheets forming subtle L -->
+  <g transform="translate(14,18)" filter="url(#softShadow02)">
+    <!-- Back sheet (slate / cool) -->
+    <rect x="22" y="0" width="86" height="108" rx="10" ry="10" fill="#1A2A22" stroke="#3A4F44" stroke-width="1.5" transform="rotate(8 65 54)"/>
+    <!-- Mid sheet -->
+    <rect x="10" y="6" width="86" height="108" rx="10" ry="10" fill="#F8FAF9" opacity="0.92" transform="rotate(3 53 60)"/>
+    <!-- Front brass sheet -->
+    <rect x="0" y="14" width="86" height="108" rx="10" ry="10" fill="url(#brass02)"/>
+    <!-- Photo window on front sheet -->
+    <rect x="14" y="30" width="58" height="58" rx="4" ry="4" fill="#070F0C" opacity="0.55"/>
+    <!-- Subtle L cut from overlap / negative space accent -->
+    <path d="M22 92 V48 H34 V80 H62 V92 Z" fill="#070F0C" opacity="0.28"/>
+    <!-- Highlight edge -->
+    <rect x="0" y="14" width="86" height="108" rx="10" ry="10" fill="none" stroke="#F8C15A" stroke-width="1" opacity="0.45"/>
+  </g>
+  <!-- Wordmark -->
+  <g transform="translate(150,48)">
+    <text x="0" y="38" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="800" font-size="52" letter-spacing="-1.2" fill="#F8FAF9">Luma</text>
+    <text x="148" y="38" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="700" font-size="52" letter-spacing="-0.5" fill="#E58A1F">Prints</text>
+    <text x="0" y="64" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="500" font-size="13" letter-spacing="3.5" fill="#8FA094">WEST POINT · UT</text>
+  </g>
+</svg>

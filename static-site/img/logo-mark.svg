@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Luma Prints icon">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F09A2B"/><stop offset="100%" stop-color="#D67506"/>
+    </linearGradient>
+  </defs>
+  <rect width="120" height="120" rx="28" fill="#070F0C"/>
+  <g transform="translate(22,14)">
+    <rect x="18" y="0" width="68" height="86" rx="8" fill="#1A2A22" transform="rotate(8 52 43)"/>
+    <rect x="8" y="6" width="68" height="86" rx="8" fill="#F8FAF9" transform="rotate(3 42 49)"/>
+    <rect x="0" y="12" width="68" height="86" rx="8" fill="url(#g)"/>
+    <rect x="12" y="26" width="44" height="44" rx="3" fill="#070F0C" opacity="0.5"/>
+    <path d="M16 82 V40 H26 V70 H48 V82 Z" fill="#070F0C" opacity="0.28"/>
+  </g>
+</svg>
