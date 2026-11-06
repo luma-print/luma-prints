@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /admin/
+Disallow: /success.html
+
+Sitemap: https://luma-prints.onrender.com/sitemap.xml

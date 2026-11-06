@@ -81,7 +81,26 @@ const upload = multer({
 });
 
 const app = express();
-app.use(express.static(path.join(__dirname, 'public')));
+const PUBLIC = path.join(__dirname, 'public');
+const GOOGLE_SITE_VERIFICATION = (process.env.GOOGLE_SITE_VERIFICATION || '').trim();
+const escAttr = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function sendPublicHtml(file) {
+  return (req, res) => {
+    let html = fs.readFileSync(path.join(PUBLIC, file), 'utf8');
+    if (GOOGLE_SITE_VERIFICATION && !/name=["']google-site-verification["']/i.test(html)) {
+      html = html.replace(/<\/head>/i, `<meta name="google-site-verification" content="${escAttr(GOOGLE_SITE_VERIFICATION)}">\n</head>`);
+    }
+    res.type('html').send(html);
+  };
+}
+app.get('/robots.txt', (req, res) => res.type('text/plain').sendFile(path.join(PUBLIC, 'robots.txt')));
+app.get('/sitemap.xml', (req, res) => res.type('application/xml').sendFile(path.join(PUBLIC, 'sitemap.xml')));
+app.get('/', sendPublicHtml('index.html'));
+app.get('/index.html', sendPublicHtml('index.html'));
+app.get('/order.html', sendPublicHtml('order.html'));
+app.get('/contact.html', sendPublicHtml('contact.html'));
+app.get('/success.html', sendPublicHtml('success.html'));
+app.use(express.static(PUBLIC));
 app.get('/api/config', (q, r) => r.json({ shippingFee: SHIPPING_FEE, demo: !stripe, stripe: !!stripe, venmoUsername: VENMO_USERNAME, xMoneyHandle: X_MONEY_HANDLE || null }));
 app.post('/api/contact', express.urlencoded({ extended: false }), express.json(), (req, res) => {
   const { name, email, phone, message } = req.body || {};
