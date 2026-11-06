@@ -33,7 +33,7 @@ if (process.env.SMTP_HOST) {
 }
 const FROM = () => `"Luma Prints" <${process.env.SMTP_FROM || process.env.SMTP_USER || OWNER_EMAIL}>`;
 const money = v => '$' + v.toFixed(2);
-const itemLine = i => `${i.qty} x ${i.size} ${i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' : money(i.lineTotal)}`;
+const itemLine = i => `${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' : money(i.lineTotal)}`;
 const summary = o => `Order: ${o.id}\nCustomer: ${o.customer.name}\nEmail: ${o.customer.email}\nPhone: ${o.customer.phone || '-'}\n` +
   `Delivery: ${o.delivery === 'shipping' ? 'SHIPPING to:\n' + o.address : 'PICKUP'}\n${o.notes ? 'Notes: ' + o.notes + '\n' : ''}\nItems:\n` +
   o.items.map(itemLine).join('\n') + `\n\nSubtotal: ${money(o.subtotal)}\nShipping: ${money(o.shipping)}\nTotal: ${money(o.total)}\nPayment: ${o.payment}`;
@@ -77,7 +77,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const upload = multer({
   storage: multer.diskStorage({ destination: UPLOADS, filename: (r, f, cb) => cb(null, crypto.randomBytes(8).toString('hex') + path.extname(f.originalname).toLowerCase()) }),
   limits: { fileSize: 50 * 1024 * 1024, files: 100 },
-  fileFilter: (r, f, cb) => cb(null, /^image\//.test(f.mimetype))
+  fileFilter: (r, f, cb) => cb(null, /^image\/|^application\/pdf$/i.test(f.mimetype))
 });
 
 const app = express();
@@ -96,7 +96,7 @@ app.post('/api/orders', upload.array('photos'), async (req, res) => {
   try {
     const b = req.body, files = req.files || [];
     const items = JSON.parse(b.items || '[]');
-    if (!files.length || files.length !== items.length) throw new Error('Please upload at least one photo.');
+    if (!files.length || files.length !== items.length) throw new Error('Please upload at least one photo or design file.');
     if (!b.name || !b.email) throw new Error('Name and email are required.');
     const delivery = b.delivery === 'shipping' ? 'shipping' : 'pickup';
     if (delivery === 'shipping' && !b.address) throw new Error('Shipping address is required.');
@@ -137,7 +137,7 @@ Success page: ${BASE_URL}/success.html?order=${order.id}&t=${accessToken}&method
 Note: ${order.id}${payHint}` });
       return res.json({ redirect: `/success.html?order=${order.id}&t=${accessToken}&method=${payMethod}` });
     }
-    const line_items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} ${PRICES[l.finish].label}` } } }));
+    const line_items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} – ${PRICES[l.finish].label}` } } }));
     if (shipping) line_items.push({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.round(shipping * 100), product_data: { name: 'Shipping' } } });
     const session = await stripe.checkout.sessions.create({ mode: 'payment', line_items, customer_email: order.customer.email,
       client_reference_id: order.id, metadata: { orderId: order.id },
