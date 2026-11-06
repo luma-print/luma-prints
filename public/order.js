@@ -5,7 +5,7 @@ const types = { photo: 1, invitations: 1, flyers: 1 };
 let defType = (new URLSearchParams(location.search).get('type') || 'photo').toLowerCase();
 if (!types[defType]) defType = 'photo';
 const urlSize = new URLSearchParams(location.search).get('size') || '';
-const PDF_SVG = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="12" fill="#122119"/><path d="M24 14h18l10 10v34H24z" fill="#fff" stroke="#8FA39A" stroke-width="2"/><path d="M42 14v10h10" fill="none" stroke="#8FA39A" stroke-width="2"/><rect x="18" y="38" width="30" height="13" rx="3" fill="#D67506"/><text x="33" y="48" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">PDF</text></svg>');
+const PDF_SVG = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72"><rect width="72" height="72" rx="12" fill="#E5E0D8"/><path d="M24 14h18l10 10v34H24z" fill="#fff" stroke="#6E6861" stroke-width="2"/><path d="M42 14v10h10" fill="none" stroke="#6E6861" stroke-width="2"/><rect x="18" y="38" width="30" height="13" rx="3" fill="#C95B33"/><text x="33" y="48" font-family="Arial,sans-serif" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">PDF</text></svg>');
 const keyOf = it => PR[it.type].keys[it.fin];
 const fmt = (k, s) => { const v = P[k].sizes[s]; if (v != null) return '$' + v.toFixed(2); return (P[k].displayRates && P[k].displayRates[s]) || 'Quote'; };
 function setType(it, t) { it.type = t; const fins = Object.keys(PR[t].keys); if (!fins.includes(it.fin)) it.fin = fins[0]; const sz = Object.keys(P[keyOf(it)].sizes); if (!sz.includes(it.size)) it.size = t === 'photo' ? '4x6' : sz[0]; }
