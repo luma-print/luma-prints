@@ -1,32 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160" role="img" aria-label="Luma Prints — Stacked Sheets">
-  <defs>
-    <linearGradient id="brass02" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#DF6E45"/>
-      <stop offset="100%" stop-color="#C95B33"/>
-    </linearGradient>
-    <filter id="softShadow02" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.35"/>
-    </filter>
-  </defs>
-  <!-- Mark: layered print sheets forming subtle L -->
-  <g transform="translate(14,18)" filter="url(#softShadow02)">
-    <!-- Back sheet (slate / cool) -->
-    <rect x="22" y="0" width="86" height="108" rx="10" ry="10" fill="#3A322C" stroke="#5A4E44" stroke-width="1.5" transform="rotate(8 65 54)"/>
-    <!-- Mid sheet -->
-    <rect x="10" y="6" width="86" height="108" rx="10" ry="10" fill="#FAF8F5" opacity="0.92" transform="rotate(3 53 60)"/>
-    <!-- Front brass sheet -->
-    <rect x="0" y="14" width="86" height="108" rx="10" ry="10" fill="url(#brass02)"/>
-    <!-- Photo window on front sheet -->
-    <rect x="14" y="30" width="58" height="58" rx="4" ry="4" fill="#161514" opacity="0.55"/>
-    <!-- Subtle L cut from overlap / negative space accent -->
-    <path d="M22 92 V48 H34 V80 H62 V92 Z" fill="#161514" opacity="0.28"/>
-    <!-- Highlight edge -->
-    <rect x="0" y="14" width="86" height="108" rx="10" ry="10" fill="none" stroke="#F8C15A" stroke-width="1" opacity="0.45"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 160" role="img" aria-label="Luma Prints — Primary Spectrum Frame">
+  <g transform="translate(14,16)">
+    <!-- Charcoal rounded frame -->
+    <rect x="2" y="2" width="112" height="112" rx="26" fill="#161514"/>
+    <!-- Inner soft edge -->
+    <rect x="12" y="12" width="92" height="92" rx="18" fill="none" stroke="#FAF8F5" stroke-width="1.25" opacity="0.18"/>
+    <!-- White geometric L -->
+    <path d="M36 32 V92 H88 V78 H52 V32 Z" fill="#FAF8F5"/>
+    <!-- Primary color calibration bars (Polaroid-inspired) -->
+    <rect x="18" y="98" width="26" height="8" rx="2" fill="#E03131"/>
+    <rect x="48" y="98" width="26" height="8" rx="2" fill="#F59F00"/>
+    <rect x="78" y="98" width="26" height="8" rx="2" fill="#1971C2"/>
+    <!-- Tiny corner registration marks -->
+    <rect x="18" y="18" width="8" height="8" rx="1.5" fill="#E03131"/>
+    <rect x="90" y="18" width="8" height="8" rx="1.5" fill="#1971C2"/>
   </g>
-  <!-- Wordmark -->
-  <g transform="translate(150,48)">
-    <text x="0" y="38" font-family="'Barlow Condensed', 'Manrope', system-ui, sans-serif" font-weight="800" font-size="52" letter-spacing="-1.2" fill="#FAF8F5">Luma</text>
-    <text x="148" y="38" font-family="'Barlow Condensed', 'Manrope', system-ui, sans-serif" font-weight="700" font-size="52" letter-spacing="-0.5" fill="#C95B33">Prints</text>
-    <text x="0" y="64" font-family="'Barlow Condensed', 'Manrope', system-ui, sans-serif" font-weight="500" font-size="13" letter-spacing="3.5" fill="#6E6861">WEST POINT · UT</text>
+  <g transform="translate(150,42)">
+    <text x="0" y="32" font-family="'Barlow Condensed', 'Arial Narrow', sans-serif" font-weight="800" font-size="52" letter-spacing="3" fill="#161514">LUMA PRINTS</text>
+    <text x="0" y="58" font-family="'Manrope', system-ui, sans-serif" font-weight="600" font-size="13" letter-spacing="3.5" fill="#6B6560">PHOTO &amp; PRINT STUDIO</text>
+    <!-- Mini primary bars under wordmark -->
+    <rect x="0" y="70" width="22" height="4" rx="1" fill="#E03131"/>
+    <rect x="26" y="70" width="22" height="4" rx="1" fill="#F59F00"/>
+    <rect x="52" y="70" width="22" height="4" rx="1" fill="#1971C2"/>
   </g>
 </svg>
