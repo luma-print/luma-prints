@@ -1,10 +1,54 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Luma Prints – Photo Prints, Invitations & Flyers · West Point, UT</title><meta name="description" content="Luma Prints — modern photo, invitation and flyer printing in West Point, Utah. 21 photo sizes, Matte & Glossy same price, free West Point pickup or $5 shipping."><meta name="theme-color" content="#0C1F17"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="style.css"></head><body>
-<header><nav><a class="logo" href="index.html"><i></i>Luma <em>Prints</em></a><button class="menu-t" aria-label="Menu" aria-expanded="false">☰</button><div class="links"><a href="index.html#pricing">Pricing</a><a href="index.html#about">About</a><a href="index.html#gallery">Gallery</a><a href="contact.html">Contact</a><a class="btn sm" href="order.html">Order Prints</a></div></nav></header>
-<div class="hero"><div><span class="eyebrow">West Point, UT · Printing studio</span><h1>Your moments, <em>beautifully</em> printed.</h1><p class="lead">Photo prints, invitations, announcements and flyers — vibrant color, crisp paper and personal care on every order. Upload in minutes, pick up free in West Point or ship for $5.</p>
-<div class="cta"><a class="btn" href="order.html">Order Prints →</a><a class="btn ghost" href="#pricing">View pricing</a></div>
-<div class="pills"><span class="pill">21 Photo Sizes</span><span class="pill">Invitations &amp; Flyers</span><span class="pill">Free West Point Pickup · $5 Shipping</span><span class="pill">Matte &amp; Glossy Same Price</span></div></div>
-<div class="frame"><img src="img/hero.jpg" alt="Printed photograph"><div class="mini"><img src="img/g2.jpg" alt=""></div><div class="tag"><b class="num">from $0.45</b>per photo print</div></div></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Luma Prints – Premium Photo Prints · West Point, UT</title><meta name="description" content="Luma Prints — premium photo, invitation and flyer printing in West Point, Utah. 21 photo sizes, Matte & Glossy same price, free West Point pickup or $5 shipping."><meta name="theme-color" content="#070F0C"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="style.css"></head><body>
+<header><nav><a class="logo" href="index.html"><i></i>Luma<em>Prints</em></a><button class="menu-t" aria-label="Menu" aria-expanded="false">☰</button><div class="links"><a href="#sizes">Print Sizes</a><a href="#pricing">Pricing</a><a href="#about">About</a><a href="#gallery">Gallery</a><a href="contact.html">Contact</a><a class="btn sm" href="order.html">Place Your Order</a></div></nav></header>
+
+<section class="hero-cine" aria-label="Hero">
+  <div>
+    <p class="brand">Luma</p>
+    <h1>Premium Photo Prints</h1>
+    <p class="lead">High-quality prints. Upload your memories, we’ll bring them to life.</p>
+    <div class="cta"><a class="btn" href="order.html">Place Your Order</a><a class="btn ghost" href="#pricing">View pricing</a></div>
+    <div class="pills"><span class="pill">21 Photo Sizes</span><span class="pill">Matte &amp; Glossy Same Price</span><span class="pill">Free West Point Pickup · $5 Shipping</span></div>
+  </div>
+</section>
+
+<section class="ink" id="sizes"><div class="wrap">
+  <div class="head"><span class="eyebrow">Gallery of sizes</span><h2>Our Print Sizes</h2><p>From everyday 4×6s to statement wall prints — every size is printed with rich color and personal care.</p></div>
+  <div class="sizes-grid">
+    <a class="size-card" href="order.html?type=photo&amp;size=5x7"><img src="img/g3.jpg" alt="Portrait photo print" loading="lazy"><div class="meta"><b>Portrait Prints</b><span>5×7 · 8×10 · 11×14 — from $0.75</span></div></a>
+    <a class="size-card" href="order.html?type=photo&amp;size=8x12"><img src="img/g1.jpg" alt="Landscape photo print" loading="lazy"><div class="meta"><b>Landscape Prints</b><span>4×6 · 8×12 · 12×18 — from $0.69</span></div></a>
+    <a class="size-card" href="order.html?type=photo&amp;size=16x20"><img src="img/g5.jpg" alt="Large format photo print" loading="lazy"><div class="meta"><b>Statement Prints</b><span>16×20 · 16×24 — from $18.00</span></div></a>
+  </div>
+</div></section>
+
+<section id="studio"><div class="wrap">
+  <div class="head"><span class="eyebrow">Self-serve studio</span><h2>See it before you print</h2><p>Upload a photo, toggle Matte or Glossy, and preview real print proportions — then place your order in minutes.</p></div>
+  <div class="studio">
+    <div class="studio-panel">
+      <div class="preview-stage"><div class="print-frame matte" id="home-frame" style="aspect-ratio:4/6"><img id="home-preview" src="img/hero.jpg" alt="Print preview"></div></div>
+      <div class="preview-meta"><span>Finish: <b id="home-fin-label">Matte</b></span><span>Size: <b id="home-size-label">4×6</b></span></div>
+      <div class="finish-tog" role="group" aria-label="Finish">
+        <button type="button" aria-pressed="true" data-fin="Matte">Matte</button>
+        <button type="button" aria-pressed="false" data-fin="Glossy">Glossy</button>
+      </div>
+      <div class="size-chips" id="home-sizes" role="group" aria-label="Preview size"></div>
+      <label class="drop" style="margin-top:18px;padding:22px" id="home-drop"><input type="file" id="home-file" accept="image/*" hidden><span class="ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0l-5 5m5-5l5 5M4 20h16"/></svg></span><b>Try with your photo</b><span class="mute">JPG, PNG or WebP — preview stays on your device</span></label>
+    </div>
+    <div>
+      <span class="eyebrow">How it works</span>
+      <h2>Your personal print shop</h2>
+      <p class="mute">Pick a size, choose Matte or Glossy (same price), upload as many files as you like, and check out with Venmo, X Money, Card or Apple Pay.</p>
+      <div class="steps" style="grid-template-columns:1fr;gap:12px;margin:22px 0">
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px"><div class="n" style="margin:0">01</div><div><h3 style="margin:0 0 4px">Upload</h3><p>Photos or designs — JPG, PNG, WebP or PDF.</p></div></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px"><div class="n" style="margin:0">02</div><div><h3 style="margin:0 0 4px">Customize</h3><p>Product, finish, size and quantity per file.</p></div></div>
+        <div style="display:flex;gap:14px;align-items:flex-start;padding:18px"><div class="n" style="margin:0">03</div><div><h3 style="margin:0 0 4px">Receive</h3><p>Free West Point pickup or $5 flat-rate shipping.</p></div></div>
+      </div>
+      <a class="btn" href="order.html">Start your order →</a>
+    </div>
+  </div>
+</div></section>
+
 <section class="alt" id="pricing"><div class="wrap"><div class="head"><span class="eyebrow">Services &amp; pricing</span><h2>Simple, honest pricing</h2><p>Browse photo prints, invitation packs and flyer batches. Matte and Glossy are always the same price.</p></div><div id="menu"></div></div></section>
+
 <section id="about"><div class="wrap about"><img src="img/g3.jpg" alt="Printed photograph" loading="lazy"><div><span class="eyebrow">About Luma Prints</span><h2>Quality Printing Made Easy</h2>
 <p>At Luma Prints, we bring your ideas to life with rich color, sharp detail, and personal care on every order. Whether you need everyday photo prints, posters, business cards, flyers, brochures, or custom printing, we make it easy to get results that look their best.</p>
 <p>We pair professional printing equipment with crisp matte and glossy paper options so every piece comes out vibrant and clean, backed by reliable turnaround times from start to finish.</p>
@@ -20,12 +64,41 @@
 <h3 class="about-sub">Serving Our Community</h3>
 <p>Proudly serving West Point, Davis County, and surrounding Utah communities. Whether you need a single print or a large order, Luma Prints is ready to help.</p>
 <p class="about-tagline">Luma Prints — <em>Your Vision, Our Print.</em></p></div></div></section>
+
 <section class="alt" id="gallery"><div class="wrap"><div class="head"><span class="eyebrow">Gallery</span><h2>Printed with care</h2><p>Rich color, sharp detail and clean paper — in every size.</p></div>
 <div class="gallery"><img src="img/g1.jpg" alt="" loading="lazy"><img src="img/g2.jpg" alt="" loading="lazy"><img src="img/g4.jpg" alt="" loading="lazy"><img src="img/g5.jpg" alt="" loading="lazy"><img src="img/g6.jpg" alt="" loading="lazy"><img src="img/g7.jpg" alt="" loading="lazy"><img src="img/hero.jpg" alt="" loading="lazy"><img src="img/g3.jpg" alt="" loading="lazy"></div></div></section>
-<section><div class="wrap"><div class="head"><span class="eyebrow">How it works</span><h2>Three easy steps</h2></div><div class="steps"><div><div class="n">01</div><h3>Upload</h3><p>Add photos or designs (JPG, PNG or PDF) from your phone or computer.</p></div><div><div class="n">02</div><h3>Choose</h3><p>Pick the product, finish, size or pack, and quantity for each file.</p></div><div><div class="n">03</div><h3>Receive</h3><p>Free local pickup in West Point, or $5 flat-rate shipping to your door.</p></div></div>
-<div class="band" style="margin-top:56px"><div><h2>Ready to print?</h2><p>Upload your files and check out in minutes.</p></div><a class="btn" href="order.html">Order Prints →</a></div></div></section>
-<footer><div class="wrap"><div><a class="logo" href="index.html"><i></i>Luma <em>Prints</em></a><p style="margin-top:14px">Quality printing made easy.<br>Your Vision, Our Print.</p></div>
+
+<section><div class="wrap">
+<div class="band"><div><h2>Ready to print?</h2><p>Upload your files and check out in minutes.</p></div><a class="btn" href="order.html">Place Your Order</a></div>
+</div></section>
+
+<footer><div class="wrap"><div><a class="logo" href="index.html"><i></i>Luma<em>Prints</em></a><p style="margin-top:14px">Quality printing made easy.<br>Your Vision, Our Print.</p></div>
 <div><h4>Products</h4><a href="order.html?type=photo">Photo Prints</a><a href="order.html?type=invitations">Invitations &amp; Announcements</a><a href="order.html?type=flyers">Flyers</a><a href="index.html#pricing">Pricing</a></div>
 <div><h4>Studio</h4><span style="display:block;margin-bottom:8px">West Point, UT · Davis County</span><span style="display:block;margin-bottom:8px">Free local pickup · $5 shipping</span><a href="index.html#about">About</a></div>
 <div><h4>Contact</h4><a href="mailto:Luma.prints1@gmail.com">Luma.prints1@gmail.com</a><a class="ig" href="https://www.instagram.com/luma.prints000/" target="_blank" rel="noopener noreferrer" aria-label="Luma Prints on Instagram"><svg class="ig-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r=".9" fill="currentColor" stroke="none"/></svg><span>@luma.prints000</span></a><a href="contact.html">Send a message →</a></div></div>
-<p class="copy">© Luma Prints · West Point, UT · Serving Davis County &amp; Utah</p></footer><script src="prices.js"></script><script src="site.js"></script></body></html>
+<p class="copy">© Luma Prints · West Point, UT · Serving Davis County &amp; Utah</p></footer>
+<script src="prices.js"></script><script src="site.js"></script>
+<script>
+(function(){
+  var sizes=['4x6','5x7','8x10','8x12','11x14','16x20'];
+  var frame=document.getElementById('home-frame'), img=document.getElementById('home-preview');
+  var finL=document.getElementById('home-fin-label'), sizeL=document.getElementById('home-size-label');
+  var chips=document.getElementById('home-sizes');
+  var cur='4x6', fin='Matte';
+  function apply(){
+    var p=cur.split('x'); frame.style.aspectRatio=p[0]+'/'+p[1];
+    frame.classList.toggle('glossy', fin==='Glossy'); frame.classList.toggle('matte', fin==='Matte');
+    finL.textContent=fin; sizeL.textContent=cur.replace('x','×');
+    chips.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed', b.dataset.s===cur)});
+  }
+  chips.innerHTML=sizes.map(function(s){return '<button type="button" data-s="'+s+'" aria-pressed="'+(s===cur)+'">'+s.replace('x','×')+'</button>'}).join('');
+  chips.onclick=function(e){var b=e.target.closest('button'); if(!b)return; cur=b.dataset.s; apply();};
+  document.querySelectorAll('.finish-tog button').forEach(function(b){b.onclick=function(){fin=b.dataset.fin; document.querySelectorAll('.finish-tog button').forEach(function(x){x.setAttribute('aria-pressed',x===b)}); apply();}});
+  document.getElementById('home-file').onchange=function(e){var f=e.target.files[0]; if(!f||!f.type.startsWith('image/'))return; img.src=URL.createObjectURL(f);};
+  var drop=document.getElementById('home-drop');
+  drop.ondragover=function(e){e.preventDefault(); drop.classList.add('over')}; drop.ondragleave=function(){drop.classList.remove('over')};
+  drop.ondrop=function(e){e.preventDefault(); drop.classList.remove('over'); var f=e.dataTransfer.files[0]; if(f&&f.type.startsWith('image/')) img.src=URL.createObjectURL(f);};
+  apply();
+})();
+</script>
+</body></html>

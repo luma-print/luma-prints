@@ -1,8 +1,18 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Order – Luma Prints</title><meta name="description" content="Luma Prints — modern photo, invitation and flyer printing in West Point, Utah. 21 photo sizes, Matte & Glossy same price, free West Point pickup or $5 shipping."><meta name="theme-color" content="#0C1F17"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="style.css"></head><body>
-<header><nav><a class="logo" href="index.html"><i></i>Luma <em>Prints</em></a><button class="menu-t" aria-label="Menu" aria-expanded="false">☰</button><div class="links"><a href="index.html#pricing">Pricing</a><a href="index.html#about">About</a><a href="index.html#gallery">Gallery</a><a href="contact.html">Contact</a><a class="btn sm" href="order.html">Order Prints</a></div></nav></header>
-<main class="page wrap"><div class="page-head"><span class="eyebrow">Order online</span><h1>Start your order</h1><p>Upload photos or designs, then choose the product, finish, size and quantity for each file. Photo prints, invitations &amp; announcements, and flyers.</p></div>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Order – Luma Prints</title><meta name="description" content="Luma Prints — premium photo, invitation and flyer printing in West Point, Utah. 21 photo sizes, Matte & Glossy same price, free West Point pickup or $5 shipping."><meta name="theme-color" content="#070F0C"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="style.css"></head><body>
+<header><nav><a class="logo" href="index.html"><i></i>Luma<em>Prints</em></a><button class="menu-t" aria-label="Menu" aria-expanded="false">☰</button><div class="links"><a href="index.html#sizes">Print Sizes</a><a href="index.html#pricing">Pricing</a><a href="index.html#about">About</a><a href="index.html#gallery">Gallery</a><a href="contact.html">Contact</a><a class="btn sm" href="order.html">Place Your Order</a></div></nav></header>
+<main class="page wrap">
+<div class="page-head"><span class="eyebrow">Self-serve print studio</span><h1>Place your order</h1><p>Upload photos or designs, preview the print, then choose product, finish, size and quantity. Photo prints, invitations &amp; announcements, and flyers.</p></div>
 <div id="demo" class="banner" hidden>Demo mode: online payment isn't connected yet. Your order will be saved as <b>unpaid – payment pending</b>.</div>
 <div id="cancel" class="banner" hidden>Payment was canceled. You can try again.</div>
+<div class="order-layout">
+  <div class="studio-sticky">
+    <div class="studio-panel">
+      <div class="preview-stage"><div class="print-frame matte" id="live-frame" style="aspect-ratio:4/6"><img id="live-preview" src="img/hero.jpg" alt="Live print preview"></div></div>
+      <div class="preview-meta"><span>Finish: <b id="live-fin">Matte</b></span><span>Size: <b id="live-size">4×6</b></span></div>
+      <p class="mute" style="margin:12px 0 0;font-size:.85rem;text-align:center">Live preview updates as you change the selected item.</p>
+    </div>
+  </div>
+  <div>
 <form id="f"><div class="prodpick" id="prodpick" role="radiogroup" aria-label="Default product for new uploads"></div>
 <label class="drop" id="drop"><input type="file" id="files" accept="image/*,application/pdf" multiple hidden><span class="ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0l-5 5m5-5l5 5M4 20h16"/></svg></span><b>Upload photos or designs</b><span class="mute">Tap to browse, or drag &amp; drop · JPG, PNG, WebP or PDF</span></label>
 <div class="items" id="items"></div><p id="tbd" class="banner" hidden>Flyer orders are quote-confirmed — we'll email your exact total before you pay. Nothing is charged now.</p>
@@ -16,8 +26,11 @@
 <label class="opt"><input type="radio" name="payMethod" value="applepay" id="pay-apple" disabled><span><b>Apple Pay</b><small>via Stripe Checkout</small></span></label>
 </div></fieldset>
 <p id="err" class="banner" hidden></p>
-<div class="summary"><div><div id="count" style="font-size:.85rem;opacity:.75">0 items</div><div class="total" id="total">$0.00</div></div><button class="btn" id="pay" disabled>Place order</button></div></form></main>
-<footer><div class="wrap"><div><a class="logo" href="index.html"><i></i>Luma <em>Prints</em></a><p style="margin-top:14px">Quality printing made easy.<br>Your Vision, Our Print.</p></div>
+<div class="summary"><div><div id="count" style="font-size:.85rem;opacity:.75">0 items</div><div class="total" id="total">$0.00</div></div><button class="btn" id="pay" disabled>Place order</button></div></form>
+  </div>
+</div>
+</main>
+<footer><div class="wrap"><div><a class="logo" href="index.html"><i></i>Luma<em>Prints</em></a><p style="margin-top:14px">Quality printing made easy.<br>Your Vision, Our Print.</p></div>
 <div><h4>Products</h4><a href="order.html?type=photo">Photo Prints</a><a href="order.html?type=invitations">Invitations &amp; Announcements</a><a href="order.html?type=flyers">Flyers</a><a href="index.html#pricing">Pricing</a></div>
 <div><h4>Studio</h4><span style="display:block;margin-bottom:8px">West Point, UT · Davis County</span><span style="display:block;margin-bottom:8px">Free local pickup · $5 shipping</span><a href="index.html#about">About</a></div>
 <div><h4>Contact</h4><a href="mailto:Luma.prints1@gmail.com">Luma.prints1@gmail.com</a><a class="ig" href="https://www.instagram.com/luma.prints000/" target="_blank" rel="noopener noreferrer" aria-label="Luma Prints on Instagram"><svg class="ig-ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.3" cy="6.7" r=".9" fill="currentColor" stroke="none"/></svg><span>@luma.prints000</span></a><a href="contact.html">Send a message →</a></div></div>
