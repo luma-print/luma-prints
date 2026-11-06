@@ -53,3 +53,12 @@ label.opt{display:inline-flex;gap:8px;margin-right:24px;align-items:center}label
 .gallery{grid-auto-flow:dense}
 
 .ig{display:inline-flex!important;align-items:center;gap:8px;margin-top:8px;text-decoration:none}.ig:hover span{text-decoration:underline}.ig-ico{flex:none;opacity:.9}dd .ig{margin-top:0;color:inherit}
+
+.about p{margin:0 0 14px;color:var(--ink)}
+.about-sub{font-size:1.35rem;margin:22px 0 8px;color:var(--ink)}
+.svc-list{list-style:none;padding:0;margin:0 0 16px;display:grid;grid-template-columns:1fr 1fr;gap:8px 20px;font-size:.94rem}
+.svc-list li{position:relative;padding-left:16px;line-height:1.5}
+.svc-list li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.about-tagline{font-family:"Cormorant Garamond",Georgia,serif;font-size:1.35rem;font-weight:600;margin:20px 0 0!important;padding-top:16px;border-top:1px solid var(--line)}
+.about-tagline em{color:var(--accent);font-style:italic}
+@media(max-width:600px){.svc-list{grid-template-columns:1fr}}
