@@ -4,7 +4,8 @@
   "description": "Luma Prints photo printing website",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/pricing.test.js test/orders.test.js test/browser-order.test.js"
   },
   "keywords": [],
   "author": "",
@@ -18,5 +19,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.16.0"
   }
 }
