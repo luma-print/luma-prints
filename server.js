@@ -8,6 +8,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (() => { try { return fs.re
 const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 const SHIPPING_FEE = parseFloat(process.env.SHIPPING_FEE || '5.00');
 const PRICES = require('./public/prices.js');
+const { priceOrderItem } = require('./public/pricing.js');
 const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive: true });
 function stripeSecret() {
   if (process.env.STRIPE_SECRET_KEY) return process.env.STRIPE_SECRET_KEY;
@@ -33,10 +34,10 @@ if (process.env.SMTP_HOST) {
 }
 const FROM = () => `"Luma Prints" <${process.env.SMTP_FROM || process.env.SMTP_USER || OWNER_EMAIL}>`;
 const money = v => '$' + v.toFixed(2);
-const itemLine = i => `${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' : money(i.lineTotal)}`;
+const itemLine = i => `${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' + (i.unitText ? ' (' + i.unitText + (i.totalText ? '; published total ' + i.totalText : '') + ')' : '') : money(i.lineTotal)}`;
 const summary = o => `Order: ${o.id}\nCustomer: ${o.customer.name}\nEmail: ${o.customer.email}\nPhone: ${o.customer.phone || '-'}\n` +
   `Delivery: ${o.delivery === 'shipping' ? 'SHIPPING to:\n' + o.address : 'PICKUP'}\n${o.notes ? 'Notes: ' + o.notes + '\n' : ''}\nItems:\n` +
-  o.items.map(itemLine).join('\n') + `\n\nSubtotal: ${money(o.subtotal)}\nShipping: ${money(o.shipping)}\nTotal: ${money(o.total)}\nPayment: ${o.payment}`;
+  o.items.map(itemLine).join('\n') + `\n\nSubtotal: ${money(o.subtotal)}\nShipping: ${money(o.shipping)}\nTotal: ${money(o.total)}${o.items.some(i => i.priceTBD) ? ' (quote items are not included in this dollar total)' : ''}\nPayment: ${o.payment}`;
 const BREVO_KEY = process.env.BREVO_API_KEY;
 const BREVO_URL = process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email';
 const canMail = () => !!(BREVO_KEY || mailer);
@@ -120,10 +121,10 @@ app.post('/api/orders', upload.array('photos'), async (req, res) => {
     const delivery = b.delivery === 'shipping' ? 'shipping' : 'pickup';
     if (delivery === 'shipping' && !b.address) throw new Error('Shipping address is required.');
     const lines = files.map((f, i) => {
-      const finish = items[i].finish || 'standard', size = items[i].size, qty = Math.max(1, Math.min(999, parseInt(items[i].qty) || 1));
-      if (!PRICES[finish] || !(size in PRICES[finish].sizes)) throw new Error('Invalid size/finish');
-      const unit = PRICES[finish].sizes[size];
-      return { file: f.filename, originalName: f.originalname, finish, size, qty, unit, lineTotal: unit == null ? 0 : +(unit * qty).toFixed(2), priceTBD: unit == null };
+      const src = items[i] || {};
+      const priced = priceOrderItem({ finish: src.finish, size: src.size, qty: src.qty });
+      if (!priced.ok) throw new Error(priced.error);
+      return { file: f.filename, originalName: f.originalname, finish: priced.finish, size: priced.size, qty: priced.qty, unit: priced.unit, lineTotal: priced.lineTotal, priceTBD: priced.priceTBD, quoteGap: !!priced.gap, unitText: priced.unitText || '', totalText: priced.totalText || '' };
     });
     const tbd = lines.some(l => l.priceTBD);
     const subtotal = +lines.reduce((s, l) => s + l.lineTotal, 0).toFixed(2);
@@ -233,4 +234,7 @@ app.post('/admin/orders/:id/status', auth, express.urlencoded({ extended: false 
 });
 app.get('/admin/file/:f', auth, (req, res) => res.download(path.join(UPLOADS, path.basename(req.params.f))));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Luma Prints on ${BASE_URL} ${stripe ? '(Stripe live/test key loaded)' : '(DEMO MODE: no STRIPE_SECRET_KEY, orders saved as unpaid)'}`));
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => console.log(`Luma Prints on ${BASE_URL} ${stripe ? '(Stripe live/test key loaded)' : '(DEMO MODE: no STRIPE_SECRET_KEY, orders saved as unpaid)'}`));
+}
+module.exports = { app };
