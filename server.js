@@ -10,6 +10,10 @@ const SHIPPING_FEE = parseFloat(process.env.SHIPPING_FEE || '5.00');
 const PRICES = require('./public/prices.js');
 const { priceOrderItem } = require('./public/pricing.js');
 const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive: true });
+// details for photos uploaded one at a time before the order is placed
+const UPLOAD_META = path.join(DATA, 'upload-meta'); fs.mkdirSync(UPLOAD_META, { recursive: true });
+const MAX_LINES = 5000;
+const UPLOAD_TTL_DAYS = parseFloat(process.env.UPLOAD_TTL_DAYS || '7');
 function stripeSecret() {
   if (process.env.STRIPE_SECRET_KEY) return process.env.STRIPE_SECRET_KEY;
   if (process.env.STRIPE_SECRET_KEY_ENC) {
@@ -34,7 +38,7 @@ if (process.env.SMTP_HOST) {
 }
 const FROM = () => `"Luma Prints" <${process.env.SMTP_FROM || process.env.SMTP_USER || OWNER_EMAIL}>`;
 const money = v => '$' + v.toFixed(2);
-const itemLine = i => `${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' + (i.unitText ? ' (' + i.unitText + (i.totalText ? '; published total ' + i.totalText : '') + ')' : '') : money(i.lineTotal)}`;
+const itemLine = i => `${i.photo ? 'Photo ' + i.photo + ': ' : ''}${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' + (i.unitText ? ' (' + i.unitText + (i.totalText ? '; published total ' + i.totalText : '') + ')' : '') : money(i.lineTotal)}`;
 const summary = o => `Order: ${o.id}\nCustomer: ${o.customer.name}\nEmail: ${o.customer.email}\nPhone: ${o.customer.phone || '-'}\n` +
   `Delivery: ${o.delivery === 'shipping' ? 'SHIPPING to:\n' + o.address : 'PICKUP'}\n${o.notes ? 'Notes: ' + o.notes + '\n' : ''}\nItems:\n` +
   o.items.map(itemLine).join('\n') + `\n\nSubtotal: ${money(o.subtotal)}\nShipping: ${money(o.shipping)}\nTotal: ${money(o.total)}${o.items.some(i => i.priceTBD) ? ' (quote items are not included in this dollar total)' : ''}\nPayment: ${o.payment}`;
@@ -58,10 +62,12 @@ async function notify(order, why) {
   if (why === 'PAID') return send({ to: OWNER_EMAIL, subject: `PAID: Luma Prints order ${order.id} (${money(order.total)})`, text: summary(order) + `\n\nAdmin: ${BASE_URL}/admin` });
   // owner email with photos attached up to MAX_ATTACH; the rest as admin links
   let used = 0; const attachments = [], links = [];
-  for (const i of order.items) {
-    const p = path.join(UPLOADS, i.file), size = fs.statSync(p).size;
-    if (used + size <= MAX_ATTACH) { used += size; attachments.push({ filename: `${i.qty}x_${i.size}_${i.finish}_${i.originalName}`, path: p }); }
-    else links.push(`${i.originalName}: ${BASE_URL}/admin/file/${i.file}`);
+  // one attachment per uploaded file, even when that photo is ordered in several sizes
+  for (const g of photoGroups(order.items)) {
+    const p = path.join(UPLOADS, g.file), size = fs.statSync(p).size;
+    const sizes = g.lines.map(i => `${i.qty}x_${i.size}_${i.finish}`).join('+');
+    if (used + size <= MAX_ATTACH) { used += size; attachments.push({ filename: `${sizes}_${g.originalName}`, path: p }); }
+    else links.push(`${g.photo ? 'Photo ' + g.photo + ' ' : ''}${g.originalName}: ${BASE_URL}/admin/file/${g.file}`);
   }
   const extra = links.length ? `\n\nNot attached (over ${MAX_ATTACH / 1048576} MB) – download from admin (password required):\n${links.join('\n')}` : '';
   await send({ to: OWNER_EMAIL, replyTo: order.customer.email, subject: `New Luma Prints order ${order.id} – ${order.customer.name} – ${money(order.total)} (${why})`,
@@ -70,6 +76,43 @@ async function notify(order, why) {
     text: `Hi ${order.customer.name},\n\nThank you for your order! Here is a summary:\n\n` + summary(order) +
       `\n\n${order.paymentMethod === 'venmo' ? 'Please send ' + money(order.total) + ' on Venmo to @' + VENMO_USERNAME + ' and put ' + order.id + ' in the note. Then open your order link and tap I\'ve paid.' : order.paymentMethod === 'xmoney' ? 'Please send ' + money(order.total) + ' with X Money to @' + X_MONEY_HANDLE + ' and put ' + order.id + ' in the note.' : order.payment === 'pending' ? 'Once your payment is complete we will start printing.' : order.payment === 'paid' || String(order.payment).includes('customer reported') ? 'Your payment is confirmed or reported. We will verify and start printing.' : 'We will contact you to arrange payment.'}\nQuestions? Just reply to this email.\n\nLuma Prints` });
 }
+// group saved lines by their uploaded file (older orders have one file per line)
+function photoGroups(items) {
+  const map = new Map();
+  items.forEach(i => { if (!map.has(i.file)) map.set(i.file, { file: i.file, originalName: i.originalName, photo: i.photo || 0, lines: [] }); map.get(i.file).lines.push(i); });
+  return [...map.values()];
+}
+// Each submitted line names the uploaded file it uses (fileIndex), so one photo can be
+// ordered in several sizes while the file is uploaded once. Old clients sent one file per
+// line with no fileIndex; that still works.
+function buildLines(files, items) {
+  if (!Array.isArray(items) || !files.length || !items.length) throw new Error('Please upload at least one photo or design file.');
+  if (items.length > MAX_LINES) throw new Error(`An order can have up to ${MAX_LINES} size lines. Please split it into two orders.`);
+  const indexed = items.some(it => it && it.fileIndex !== undefined);
+  let refs;
+  if (indexed) {
+    refs = items.map(it => (it || {}).fileIndex);
+    if (!refs.every(n => Number.isInteger(n) && n >= 0 && n < files.length)) throw new Error('Each order line must point to one of the uploaded files.');
+    if (new Set(refs).size !== files.length) throw new Error('Every uploaded file needs at least one print size.');
+  } else {
+    if (files.length !== items.length) throw new Error('Please upload at least one photo or design file.');
+    refs = items.map((_, i) => i);
+  }
+  const multi = new Set(refs).size !== refs.length;
+  return items.map((src, i) => {
+    const f = files[refs[i]];
+    const priced = priceOrderItem({ finish: (src || {}).finish, size: (src || {}).size, qty: (src || {}).qty });
+    if (!priced.ok) throw new Error(priced.error);
+    const line = { file: f.filename, originalName: f.originalname, finish: priced.finish, size: priced.size, qty: priced.qty, unit: priced.unit, lineTotal: priced.lineTotal, priceTBD: priced.priceTBD, quoteGap: !!priced.gap, unitText: priced.unitText || '', totalText: priced.totalText || '' };
+    if (multi) { line.photo = refs[i] + 1; line.fileIndex = refs[i]; }
+    return line;
+  });
+}
+function stripeLineItems(lines, shipping) {
+  const items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} – ${PRICES[l.finish].label}${l.photo ? ' (Photo ' + l.photo + ')' : ''}` } } }));
+  if (shipping) items.push({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.round(shipping * 100), product_data: { name: 'Shipping' } } });
+  return items;
+}
 const loadOrder = id => JSON.parse(fs.readFileSync(path.join(ORDERS, id + '.json')));
 const saveOrder = o => fs.writeFileSync(path.join(ORDERS, o.id + '.json'), JSON.stringify(o, null, 2));
 const allOrders = () => fs.readdirSync(ORDERS).filter(f => f.endsWith('.json')).map(f => JSON.parse(fs.readFileSync(path.join(ORDERS, f)))).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -77,9 +120,37 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 const upload = multer({
   storage: multer.diskStorage({ destination: UPLOADS, filename: (r, f, cb) => cb(null, crypto.randomBytes(8).toString('hex') + path.extname(f.originalname).toLowerCase()) }),
-  limits: { fileSize: 50 * 1024 * 1024, files: 100 },
+  // 50 MB per file; no cap on how many photos an order can have. Files stream straight to disk.
+  limits: { fileSize: 50 * 1024 * 1024, fieldSize: 5 * 1024 * 1024 },
   fileFilter: (r, f, cb) => cb(null, /^image\/|^application\/pdf$/i.test(f.mimetype))
 });
+const UPLOAD_ID = /^[a-f0-9]{16}(\.[a-z0-9]{1,10})?$/;
+const metaPath = id => path.join(UPLOAD_META, id + '.json');
+function stagedFile(id) {
+  if (typeof id !== 'string' || !UPLOAD_ID.test(id)) throw new Error('A photo upload is missing. Please upload it again.');
+  let m;
+  try { m = JSON.parse(fs.readFileSync(metaPath(id), 'utf8')); } catch { throw new Error('A photo upload expired or is missing. Please upload it again.'); }
+  if (!fs.existsSync(path.join(UPLOADS, m.file))) throw new Error('A photo upload expired or is missing. Please upload it again.');
+  return { filename: m.file, originalname: m.originalName };
+}
+// remove photos that were uploaded but never used in an order (abandoned carts)
+function cleanupStaged() {
+  try {
+    if (!(UPLOAD_TTL_DAYS > 0)) return;
+    const used = new Set();
+    for (const f of fs.readdirSync(ORDERS)) if (f.endsWith('.json')) { try { JSON.parse(fs.readFileSync(path.join(ORDERS, f), 'utf8')).items.forEach(i => used.add(i.file)); } catch { /* skip */ } }
+    const cutoff = Date.now() - UPLOAD_TTL_DAYS * 86400000;
+    for (const f of fs.readdirSync(UPLOAD_META)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const m = JSON.parse(fs.readFileSync(path.join(UPLOAD_META, f), 'utf8'));
+        if (used.has(m.file) || Date.parse(m.createdAt) > cutoff) continue;
+        fs.rmSync(path.join(UPLOADS, path.basename(m.file)), { force: true });
+        fs.rmSync(path.join(UPLOAD_META, f), { force: true });
+      } catch { /* skip */ }
+    }
+  } catch (e) { console.error('Upload cleanup failed:', e.message); }
+}
 
 const app = express();
 const PUBLIC = path.join(__dirname, 'public');
@@ -112,20 +183,33 @@ app.post('/api/contact', express.urlencoded({ extended: false }), express.json()
   res.json({ ok: true });
 });
 
-app.post('/api/orders', upload.array('photos'), async (req, res) => {
+// One photo per request, so big orders never become one huge upload. The order then
+// refers to these uploads by id.
+app.post('/api/uploads', (req, res) => {
+  upload.single('photo')(req, res, err => {
+    if (err) return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Each file must be 50 MB or smaller.' : 'Upload failed. Please try again.' });
+    const f = req.file;
+    if (!f) return res.status(400).json({ error: 'Please choose a JPG, PNG, WebP or PDF file.' });
+    const meta = { id: f.filename, file: f.filename, originalName: f.originalname, mimetype: f.mimetype, size: f.size, createdAt: new Date().toISOString() };
+    fs.writeFileSync(metaPath(f.filename), JSON.stringify(meta));
+    res.json({ id: f.filename, name: f.originalname, size: f.size });
+  });
+});
+
+app.post('/api/orders', (req, res, next) => upload.array('photos')(req, res, err => {
+  if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Each file must be 50 MB or smaller.' : 'Upload failed. Please try again.' });
+  next();
+}), async (req, res) => {
   try {
-    const b = req.body, files = req.files || [];
+    const b = req.body;
+    const staged = b.uploads ? JSON.parse(b.uploads) : null;
+    if (staged && !Array.isArray(staged)) throw new Error('Please upload at least one photo or design file.');
+    const files = staged ? staged.map(stagedFile) : (req.files || []);
     const items = JSON.parse(b.items || '[]');
-    if (!files.length || files.length !== items.length) throw new Error('Please upload at least one photo or design file.');
     if (!b.name || !b.email) throw new Error('Name and email are required.');
     const delivery = b.delivery === 'shipping' ? 'shipping' : 'pickup';
     if (delivery === 'shipping' && !b.address) throw new Error('Shipping address is required.');
-    const lines = files.map((f, i) => {
-      const src = items[i] || {};
-      const priced = priceOrderItem({ finish: src.finish, size: src.size, qty: src.qty });
-      if (!priced.ok) throw new Error(priced.error);
-      return { file: f.filename, originalName: f.originalname, finish: priced.finish, size: priced.size, qty: priced.qty, unit: priced.unit, lineTotal: priced.lineTotal, priceTBD: priced.priceTBD, quoteGap: !!priced.gap, unitText: priced.unitText || '', totalText: priced.totalText || '' };
-    });
+    const lines = buildLines(files, items);
     const tbd = lines.some(l => l.priceTBD);
     const subtotal = +lines.reduce((s, l) => s + l.lineTotal, 0).toFixed(2);
     const shipping = delivery === 'shipping' ? SHIPPING_FEE : 0;
@@ -157,8 +241,7 @@ Success page: ${BASE_URL}/success.html?order=${order.id}&t=${accessToken}&method
 Note: ${order.id}${payHint}` });
       return res.json({ redirect: `/success.html?order=${order.id}&t=${accessToken}&method=${payMethod}` });
     }
-    const line_items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} – ${PRICES[l.finish].label}` } } }));
-    if (shipping) line_items.push({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.round(shipping * 100), product_data: { name: 'Shipping' } } });
+    const line_items = stripeLineItems(lines, shipping);
     const session = await stripe.checkout.sessions.create({ mode: 'payment', line_items, customer_email: order.customer.email,
       client_reference_id: order.id, metadata: { orderId: order.id },
       success_url: `${BASE_URL}/api/stripe/return?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${BASE_URL}/order.html?canceled=1` });
@@ -216,7 +299,7 @@ app.get('/admin', auth, (req, res) => {
    <span class="pill ${o.payment === 'paid' ? 'ok' : 'warn'}">${esc(o.payment)}</span></div>
    <p>${esc(o.customer.name)} · <a href="mailto:${esc(o.customer.email)}">${esc(o.customer.email)}</a> · ${esc(o.customer.phone)}<br>
    <b>${o.delivery === 'shipping' ? 'Ship to:' : 'Pickup'}</b> ${esc(o.address)} ${o.notes ? '<br><i>Notes: ' + esc(o.notes) + '</i>' : ''}</p>
-   <ul>${o.items.map(i => `<li>${i.qty} × ${i.size} <i>${esc(i.finish)}</i> — <a href="/admin/file/${esc(i.file)}" download="${esc(i.originalName)}">${esc(i.originalName)}</a> (${i.priceTBD ? '[price TBD]' : '$' + i.lineTotal.toFixed(2)})</li>`).join('')}</ul>
+   <ul>${o.items.map(i => `<li>${i.photo ? '<b>Photo ' + esc(i.photo) + '</b> · ' : ''}${i.qty} × ${i.size} <i>${esc(i.finish)}</i> — <a href="/admin/file/${esc(i.file)}" download="${esc(i.originalName)}">${esc(i.originalName)}</a> (${i.priceTBD ? '[price TBD]' : '$' + i.lineTotal.toFixed(2)})</li>`).join('')}</ul>
    <p>Total: <b>$${o.total.toFixed(2)}</b></p>
    <form method="post" action="/admin/orders/${esc(o.id)}/status"><select name="status">${['new', 'printing', 'ready', 'shipped', 'completed'].map(s => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
    <label><input type="checkbox" name="paid" ${o.payment === 'paid' ? 'checked' : ''}> paid</label> <button>Update</button></form></div>`).join('') || '<p>No orders yet.</p>';
@@ -235,6 +318,8 @@ app.post('/admin/orders/:id/status', auth, express.urlencoded({ extended: false 
 app.get('/admin/file/:f', auth, (req, res) => res.download(path.join(UPLOADS, path.basename(req.params.f))));
 
 if (require.main === module) {
+  cleanupStaged();
+  setInterval(cleanupStaged, 6 * 3600000).unref();
   app.listen(PORT, '0.0.0.0', () => console.log(`Luma Prints on ${BASE_URL} ${stripe ? '(Stripe live/test key loaded)' : '(DEMO MODE: no STRIPE_SECRET_KEY, orders saved as unpaid)'}`));
 }
-module.exports = { app };
+module.exports = { app, buildLines, stripeLineItems, photoGroups, summary, cleanupStaged };

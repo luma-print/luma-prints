@@ -15,7 +15,9 @@ Two versions are included:
 **GitHub Pages:** works for pages, but forms need a backend — use Netlify, or point the forms' `action` to a service like Formspree.
 The static version doesn't take online payment; you confirm and invoice by email.
 
-Customers upload photos, choose size (4×6 $0.69 · 8×10 $4.00 · 16×20 $18.00) and quantity per photo, enter contact + pickup/shipping, and pay with Stripe Checkout. You receive every order (files + details) in a password-protected admin page, plus optional email alerts.
+Customers upload photos, choose size (4×6 $0.69 · 8×10 $4.00 · 16×20 $18.00) and quantity per photo (one photo can be ordered in several sizes with **Add another size**, and the file is uploaded once), enter contact + pickup/shipping, and pay with Stripe Checkout.
+
+**Upload limits:** 50 MB per file and no limit on how many photos an order has. Photos are uploaded one by one (3 at a time, each retried up to 3 times) before the order is placed, so a big order never becomes one huge request, and a failed photo can be retried without losing the rest. An order can have up to 5,000 size lines. Total space is the size of the persistent disk. You receive every order (files + details) in a password-protected admin page, plus optional email alerts.
 
 ## Run locally
 ```bash
@@ -37,10 +39,12 @@ Node 18+. Without `STRIPE_SECRET_KEY` the site runs in **demo mode**: orders are
 | `OWNER_EMAIL` | no (default `Luma.prints1@gmail.com`) | Where order + contact emails go |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | to send email | See *Email setup* below. SMTP fallback, used only if `BREVO_API_KEY` is unset. Neither set = no emails (orders still saved) |
 | `MAX_ATTACH_MB` | no (default 10) | Max photos attached per order email; extra photos become admin download links |
+| `UPLOAD_TTL_DAYS` | no (default 7) | Photos uploaded but never used in an order (abandoned carts) are deleted after this many days. `0` turns cleanup off |
 
 ## Where orders go
 - `data/orders/<ORDER-ID>.json` – customer, delivery, items, totals, payment + status
 - `data/uploads/` – the original photo files
+- `data/upload-meta/` – the name and time of each photo uploaded before checkout
 - `data/messages/` – contact form messages (also shown in /admin)
 - `/admin` – list of orders + contact messages, file download links, status (new → printing → ready → shipped → completed) and a "paid" toggle (useful for cash/demo orders).
 
