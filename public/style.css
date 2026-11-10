@@ -293,3 +293,11 @@ footer .logo .logo-lockup{height:56px}
   .size-picker{grid-template-columns:repeat(auto-fill,minmax(76px,1fr))}
   .size-opt{min-height:52px;padding:10px}
 }
+
+/* Same photo in several sizes: extra lines share one uploaded file */
+.add-size{display:inline-flex;align-items:center;gap:6px;margin-top:10px;padding:9px 14px;min-height:40px;border:1px dashed var(--accent,#B5834B);border-radius:999px;background:var(--card2,#FAF7F2);color:var(--ink2,#3D342C);font:600 .86rem/1 var(--body);cursor:pointer;transition:background .15s,border-color .15s}
+.add-size:hover,.add-size:focus-visible{background:var(--pill-bg,#F0EBE3);border-style:solid}
+.add-size span{color:var(--accent,#B5834B);font-weight:700}
+.size-tag{display:inline-block;margin:-4px 0 8px;padding:3px 10px;border-radius:999px;background:var(--pill-bg,#F0EBE3);color:var(--pill-ink,#3D342C);font-size:.74rem;font-weight:600;letter-spacing:.02em}
+.item.same-photo{border-left:3px solid var(--accent,#B5834B)}
+@media(max-width:760px){.add-size{width:100%;justify-content:center}}

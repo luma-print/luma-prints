@@ -1,4 +1,4 @@
-let cfg, list = [], sel = 0;
+let cfg, list = [], sel = 0, nextSrc = 1;
 const $ = s => document.querySelector(s);
 const P = LUMA_PRICES, PR = LUMA_PRODUCTS, RP = LUMA_PRICING;
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -81,9 +81,69 @@ function applyProduct(it, t) {
   }
 }
 
+// Every line points at one uploaded file (it.src). Extra sizes of the same photo are
+// separate lines that share that file, so the file is uploaded only once.
+const linesOf = src => list.filter(it => it.src === src);
+const uniqueSources = () => { const seen = new Map(); list.forEach(it => { if (!seen.has(it.src)) seen.set(it.src, it); }); return [...seen.values()]; };
+function nextFreeSize(it) {
+  const sizes = sizesOf(it.type, it.fin);
+  const used = new Set(linesOf(it.src).filter(o => o.type === it.type && o.fin === it.fin).map(o => o.size));
+  const start = Math.max(0, sizes.indexOf(it.size));
+  for (let k = 1; k <= sizes.length; k++) { const s = sizes[(start + k) % sizes.length]; if (!used.has(s)) return s; }
+  return it.size;
+}
+function addSizeLine(i) {
+  const base = list[i];
+  if (!base || base.type === 'flyers') return;
+  const copy = { file: base.file, src: base.src, url: base.url, pdf: base.pdf, type: base.type, fin: base.fin, size: base.size, qty: 1, qtyByType: {}, finByType: {} };
+  copy.size = nextFreeSize(base);
+  const group = linesOf(base.src);
+  const at = list.indexOf(group[group.length - 1]) + 1;
+  list.splice(at, 0, copy);
+  sel = at;
+  pending.size = copy.size;
+  studioMode = '';
+  render();
+  const el = document.querySelectorAll('.item')[at];
+  if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+const UPLOAD_PARALLEL = 3;
+const uploadIds = new Map(); // photo src -> server upload id
+async function uploadOne(it) {
+  let last;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const fd = new FormData();
+      fd.append('photo', it.file, it.file.name);
+      const r = await fetch('/api/uploads', { method: 'POST', body: fd });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.id) { uploadIds.set(it.src, j.id); return; }
+      last = new Error(j.error || 'Upload failed.');
+      if (r.status === 413 || r.status === 400) break;
+    } catch (e) { last = e; }
+    await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+  }
+  throw new Error(`"${it.file.name}" didn't upload (${last && last.message ? last.message : 'network error'}). Your other photos are saved — tap the button again to retry.`);
+}
+async function uploadAll(srcs) {
+  const todo = srcs.filter(it => !uploadIds.has(it.src));
+  const doneBefore = srcs.length - todo.length;
+  let done = 0, failed = null;
+  const show = () => { $('#pay').textContent = `Uploading ${Math.min(doneBefore + done + 1, srcs.length)} of ${srcs.length}…`; };
+  show();
+  let next = 0;
+  async function worker() {
+    while (next < todo.length && !failed) {
+      const it = todo[next++];
+      try { await uploadOne(it); done++; show(); } catch (e) { failed = failed || e; }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, todo.length) }, worker));
+  if (failed) throw failed;
+}
 const add = files => {
   [...files].filter(f => f.type.startsWith('image/') || f.type === 'application/pdf').forEach(f => {
-    const it = { file: f, type: '', qty: pending.qty, fin: pending.fin, size: pending.size, qtyByType: {}, finByType: {}, pdf: f.type === 'application/pdf' };
+    const it = { file: f, src: nextSrc++, type: '', qty: pending.qty, fin: pending.fin, size: pending.size, qtyByType: {}, finByType: {}, pdf: f.type === 'application/pdf' };
     it.url = it.pdf ? PDF_SVG : URL.createObjectURL(f);
     applyProduct(it, defType);
     if (defType !== 'flyers') {
@@ -236,14 +296,26 @@ function render() {
     const min = it.type === 'flyers' ? P.flyers.minQty : 1;
     const max = it.type === 'flyers' ? P.flyers.maxQty : 999;
     const el = document.createElement('div');
-    el.className = 'item' + (i === sel ? ' active' : '');
-    el.innerHTML = `<img class="th" src="${it.url}" alt=""><div class="item-main"><div class="nm"></div><div class="ctl">
+    const group = linesOf(it.src);
+    const pos = group.indexOf(it);
+    const photoNo = uniqueSources().findIndex(o => o.src === it.src) + 1;
+    el.className = 'item' + (i === sel ? ' active' : '') + (pos > 0 ? ' same-photo' : '');
+    el.dataset.photo = photoNo;
+    el.innerHTML = `<img class="th" src="${it.url}" alt="" loading="lazy" decoding="async"><div class="item-main"><div class="nm"></div><div class="ctl">
 <div><label>Product</label><select class="pt">${Object.entries(PR).map(([t, v]) => `<option value="${t}" ${t === it.type ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></div>
 <div><label>Finish</label><select class="fin" ${fins.length < 2 ? 'disabled' : ''}>${fins.map(f => `<option ${f === it.fin ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
 <div><label>${it.type === 'flyers' ? 'Flyers' : packs ? 'Packs' : 'Qty'}</label><input class="qty" type="number" inputmode="numeric" min="${min}" max="${max}" step="1" value="${Number.isInteger(it.qty) ? it.qty : ''}" aria-label="${it.type === 'flyers' ? 'Flyer quantity, minimum ' + min : 'Quantity'}"></div>
-</div><div class="size-block">${it.type === 'flyers' ? flyerCard(it.qty, false).replace(' id="flyer-quote"', '') : sizeButtons(it.type, it.fin, it.size)}</div><p class="line-note"></p><p class="field-error" hidden></p></div>
+</div><div class="size-block">${it.type === 'flyers' ? flyerCard(it.qty, false).replace(' id="flyer-quote"', '') : sizeButtons(it.type, it.fin, it.size)}</div><p class="line-note"></p><p class="field-error" hidden></p>${it.type === 'flyers' ? '' : `<button type="button" class="add-size" aria-label="Add another size of this photo"><span aria-hidden="true">＋</span> Add another size</button>`}</div>
 <div class="side"><b class="lt"></b><button type="button" class="rm" aria-label="Remove">✕</button></div>`;
     el.querySelector('.nm').textContent = it.file.name;
+    if (group.length > 1) {
+      const tag = document.createElement('span');
+      tag.className = 'size-tag';
+      tag.textContent = `Photo ${photoNo} · size ${pos + 1} of ${group.length}`;
+      el.querySelector('.nm').after(tag);
+    }
+    const addBtn = el.querySelector('.add-size');
+    if (addBtn) addBtn.onclick = () => addSizeLine(i);
     el.querySelector('.pt').onchange = e => { applyProduct(it, e.target.value); sel = i; studioMode = ''; render(); };
     el.querySelector('.fin').onchange = e => { it.fin = e.target.value; if (it.type !== 'flyers' && !sizesOf(it.type, it.fin).includes(it.size)) it.size = defaultSize(it.type, it.fin); sel = i; studioMode = ''; render(); };
     bindSizeGroup(el, size => { it.size = size; pending.size = size; sel = i; studioMode = ''; render(); });
@@ -277,6 +349,7 @@ function render() {
       updatePreview();
       total();
     };
+    el.querySelector('.rm').setAttribute('aria-label', group.length > 1 ? 'Remove this size' : 'Remove');
     el.querySelector('.rm').onclick = () => { list.splice(i, 1); if (sel >= list.length) sel = Math.max(0, list.length - 1); studioMode = ''; render(); };
     host.append(el);
   });
@@ -345,7 +418,8 @@ function total() {
   tbdEl.textContent = gap
     ? 'Some flyer quantities have no published rate. Those stay quote-required — we will not estimate a price. Nothing is charged now.'
     : 'Flyer rates are published as a range, not an exact price. We email the exact total before you pay. Nothing is charged now.';
-  $('#count').textContent = `${list.length} file${list.length === 1 ? '' : 's'} · ${n || 0} item${n === 1 ? '' : 's'}${shippingOn ? ' + shipping' : ''}${tbd ? ' · quote' : ''}`;
+  const files = uniqueSources().length;
+  $('#count').textContent = `${files} file${files === 1 ? '' : 's'}${list.length > files ? ' · ' + list.length + ' sizes' : ''} · ${n || 0} item${n === 1 ? '' : 's'}${shippingOn ? ' + shipping' : ''}${tbd ? ' · quote' : ''}`;
   $('#total').textContent = invalid ? '—' : quoteOnly ? (shippingOn ? '$' + cfg.shippingFee.toFixed(2) + '+' : 'Quote') : '$' + t.toFixed(2) + (tbd ? '+' : '');
   const m = payMethod();
   $('#pay').disabled = !list.length || !!invalid;
@@ -362,14 +436,22 @@ $('#f').onsubmit = async e => {
     const priced = lineFor(it);
     if (!priced.ok) { $('#err').textContent = priced.error; $('#err').hidden = false; total(); return; }
   }
-  $('#pay').disabled = true; $('#pay').textContent = 'Uploading…';
-  const fd = new FormData($('#f'));
-  list.forEach(it => fd.append('photos', it.file, it.file.name));
-  fd.append('items', JSON.stringify(list.map(it => ({ finish: keyOf(it), size: it.size, qty: it.qty }))));
-  fd.append('payMethod', payMethod());
+  $('#pay').disabled = true;
+  const srcs = uniqueSources();
   try {
+    // Upload photos one at a time (a few in parallel) so large orders don't become one
+    // giant request. Finished uploads are remembered, so a retry only sends what is left.
+    await uploadAll(srcs);
+    $('#pay').textContent = 'Placing order…';
+    const fd = new FormData($('#f'));
+    fd.append('uploads', JSON.stringify(srcs.map(it => uploadIds.get(it.src))));
+    fd.append('items', JSON.stringify(list.map(it => ({ finish: keyOf(it), size: it.size, qty: it.qty, fileIndex: srcs.findIndex(o => o.src === it.src) }))));
+    fd.append('payMethod', payMethod());
     const r = await fetch('/api/orders', { method: 'POST', body: fd }), j = await r.json();
-    if (!r.ok) throw new Error(j.error);
+    if (!r.ok) {
+      if (/upload (expired|is missing)/i.test(j.error || '')) uploadIds.clear();
+      throw new Error(j.error);
+    }
     location.href = j.redirect;
   } catch (x) { $('#err').textContent = x.message; $('#err').hidden = false; total(); }
 };

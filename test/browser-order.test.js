@@ -318,3 +318,89 @@ test('static site mirrors the unified size list and flyer quote', { timeout: 120
     assert.equal(a.equals(b), true, f + ' drifted from public');
   }
 });
+
+async function tap(page, sel) {
+  await page.$eval(sel, el => { el.scrollIntoView({ block: 'center' }); el.click(); });
+}
+test('one photo can be ordered in two sizes with Add another size, uploaded once', { timeout: 120000 }, async () => {
+  const before = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json'));
+  for (const [label, width, height] of [['desktop', 1280, 900], ['mobile', 390, 844]]) {
+    const page = await pageAt(width, height, `http://127.0.0.1:${PORT}/order.html?type=photo`);
+    await page.waitForSelector('#studio-size button[data-size="4x6"]');
+    await (await page.$('#files')).uploadFile(pngPath);
+    await page.waitForSelector('.item .add-size');
+    await tap(page, '.item button[data-size="4x6"]');
+    await setQty(page, 2);
+    await tap(page, '.item .add-size');
+    await page.waitForFunction(() => document.querySelectorAll('.item').length === 2);
+    await tap(page, '.item:nth-child(2) button[data-size="8x10"]');
+    await page.waitForFunction(() => document.getElementById('total').textContent === '$5.38');
+    const st = await page.evaluate(() => ({
+      lines: [...document.querySelectorAll('.item')].map(el => ({
+        name: el.querySelector('.nm').textContent,
+        tag: (el.querySelector('.size-tag') || {}).textContent,
+        size: el.querySelector('button[aria-checked="true"]').dataset.size,
+        qty: el.querySelector('.qty').value,
+        lt: el.querySelector('.lt').textContent
+      })),
+      count: document.getElementById('count').textContent,
+      studio: document.getElementById('studio-price').textContent
+    }));
+    assert.deepEqual(st.lines, [
+      { name: 'tiny.png', tag: 'Photo 1 · size 1 of 2', size: '4x6', qty: '2', lt: '$1.38' },
+      { name: 'tiny.png', tag: 'Photo 1 · size 2 of 2', size: '8x10', qty: '1', lt: '$4.00' }
+    ]);
+    assert.equal(st.count, '1 file · 2 sizes · 3 items');
+    assert.match(st.studio, /8×10 · \$4\.00 each/);
+    // removing one size keeps the other line and the photo
+    await page.$eval('#items', el => el.scrollIntoView({ block: 'start' }));
+    await page.evaluate(() => window.scrollBy(0, -90));
+    await shot(page, 'same-photo-two-sizes-' + label);
+    assert.deepEqual(page.__errors || [], []);
+    if (label === 'desktop') {
+      await page.type('input[name=name]', 'QA Two Sizes');
+      await page.type('input[name=email]', 'qa-two@example.com');
+      const uploadsBefore = fs.readdirSync(path.join(dir, 'uploads')).length;
+      await page.click('#pay');
+      await page.waitForFunction(() => location.pathname.endsWith('/success.html'), { timeout: 15000 });
+      assert.equal(fs.readdirSync(path.join(dir, 'uploads')).length, uploadsBefore + 1);
+      const now = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json') && !before.includes(f));
+      assert.equal(now.length, 1);
+      const order = JSON.parse(fs.readFileSync(path.join(dir, 'orders', now[0]), 'utf8'));
+      assert.deepEqual(order.items.map(i => [i.size, i.qty, i.lineTotal, i.originalName, i.photo]), [['4x6', 2, 1.38, 'tiny.png', 1], ['8x10', 1, 4, 'tiny.png', 1]]);
+      assert.equal(order.items[0].file, order.items[1].file);
+      assert.equal(order.total, 5.38);
+    } else {
+      await tap(page, '.item:nth-child(1) .rm');
+      await page.waitForFunction(() => document.querySelectorAll('.item').length === 1);
+      const left = await page.evaluate(() => ({ size: document.querySelector('.item button[aria-checked="true"]').dataset.size, total: document.getElementById('total').textContent, tag: !!document.querySelector('.size-tag') }));
+      assert.deepEqual(left, { size: '8x10', total: '$4.00', tag: false });
+    }
+    await page.close();
+  }
+});
+
+test('a 150-photo order uploads in small requests and is saved in full', { timeout: 180000 }, async () => {
+  const bulk = path.join(dir, 'bulk');
+  fs.mkdirSync(bulk, { recursive: true });
+  const paths = Array.from({ length: 150 }, (_, i) => { const p = path.join(bulk, `img${String(i).padStart(3, '0')}.png`); fs.writeFileSync(p, PNG); return p; });
+  const before = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json'));
+  const page = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=photo&size=4x6`);
+  await page.waitForSelector('#studio-size button[data-size="4x6"]');
+  await (await page.$('#files')).uploadFile(...paths);
+  await page.waitForFunction(() => document.querySelectorAll('.item').length === 150);
+  assert.equal(await page.$eval('#total', el => el.textContent), '$103.50');
+  await page.type('input[name=name]', 'QA Bulk');
+  await page.type('input[name=email]', 'qa-bulk@example.com');
+  let uploadCalls = 0;
+  page.on('request', r => { if (r.url().endsWith('/api/uploads')) uploadCalls++; });
+  await page.click('#pay');
+  await page.waitForFunction(() => location.pathname.endsWith('/success.html'), { timeout: 120000 });
+  assert.equal(uploadCalls, 150);
+  const now = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json') && !before.includes(f));
+  const order = JSON.parse(fs.readFileSync(path.join(dir, 'orders', now[0]), 'utf8'));
+  assert.equal(order.items.length, 150);
+  assert.equal(new Set(order.items.map(i => i.file)).size, 150);
+  assert.equal(order.total, 103.5);
+  await page.close();
+});
