@@ -40,6 +40,7 @@ Node 18+. Without `STRIPE_SECRET_KEY` the site runs in **demo mode**: orders are
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | to send email | See *Email setup* below. SMTP fallback, used only if `BREVO_API_KEY` is unset. Neither set = no emails (orders still saved) |
 | `MAX_ATTACH_MB` | no (default 10) | Max photos attached per order email; extra photos become admin download links |
 | `UPLOAD_TTL_DAYS` | no (default 7) | Photos uploaded but never used in an order (abandoned carts) are deleted after this many days. `0` turns cleanup off |
+| `FILES_CONFIRM_TOKEN` | recommended | Secret for the email bot. Enables the confirm-received API (`Authorization: Bearer …`), the signed *Confirm all files received* link and signed download links in the owner email. Without it, confirm from `/admin` only |
 
 ## Where orders go
 - `data/orders/<ORDER-ID>.json` – customer, delivery, items, totals, payment + status
@@ -82,3 +83,15 @@ Netlify site → **Site configuration → Forms → Form notifications → Add n
 ## Deploy on Render (render.yaml included)
 Render dashboard → **New → Blueprint** (or Web Service) → paste this public repo URL → it reads `render.yaml`. Fill in the secret values when prompted (`ADMIN_PASSWORD`, `BREVO_API_KEY`, optional `STRIPE_SECRET_KEY`), then set `BASE_URL` to the `https://….onrender.com` URL Render gives you and redeploy.
 **Free plan caveat:** free web services have no persistent disk and sleep when idle — uploaded photos/orders stored on the server are wiped on each redeploy/restart. Orders are still emailed to you with photos attached, so the email is your record. For permanent storage upgrade to a paid instance with a Disk mounted at e.g. `/var/data` and set `DATA_DIR=/var/data`.
+
+
+## Files are held until confirmed received
+
+Photos of a placed order are **never deleted by time**. Each order saves a file manifest (name, bytes, sha256). The owner order email lists that manifest. Files that don't fit in the email come with download links.
+
+To release the space after every file has arrived (and gone to editing), use one of these:
+- **Email bot (API):** `POST /api/orders/<orderId>/confirm-received` with header `Authorization: Bearer $FILES_CONFIRM_TOKEN`. An optional JSON body `{ "received": [{ "sha256": "…", "bytes": 123 }] }` must then match the manifest exactly. `GET /api/orders/<orderId>/manifest` (same header) returns the manifest.
+- **Link in the owner email:** *Confirm all files received* opens a page that lists the files, with a button. Only the button (a POST) deletes, so link scanners can't.
+- **Admin page:** *Confirm files received & delete from website* on each order.
+
+Before deleting, the server re-checks every file's size and sha256. If anything is missing or changed, it deletes nothing and returns 409 with the problems. A repeat confirmation just returns the earlier result. The order record stays, marked `filesDeleted` / `filesReceivedAt`. `/admin` shows *Files held* or *Received & deleted*, disk usage, and the orders still holding files.

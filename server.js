@@ -14,6 +14,20 @@ const MESSAGES = path.join(DATA, 'messages'); fs.mkdirSync(MESSAGES, { recursive
 const UPLOAD_META = path.join(DATA, 'upload-meta'); fs.mkdirSync(UPLOAD_META, { recursive: true });
 const MAX_LINES = 5000;
 const UPLOAD_TTL_DAYS = parseFloat(process.env.UPLOAD_TTL_DAYS || '7');
+// Secret for the email bot: Bearer token for the confirm API and key for signed links.
+const FILES_CONFIRM_TOKEN = (process.env.FILES_CONFIRM_TOKEN || '').trim();
+const sign = msg => crypto.createHmac('sha256', FILES_CONFIRM_TOKEN).update(msg).digest('hex');
+const safeEq = (a, b) => { const x = Buffer.from(String(a || '')), y = Buffer.from(String(b || '')); return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y); };
+const confirmSig = id => sign('confirm-received:' + id);
+const fileSig = (id, f) => sign('file:' + id + ':' + f);
+const confirmLink = id => `${BASE_URL}/orders/${encodeURIComponent(id)}/confirm-received?sig=${confirmSig(id)}`;
+const fileLink = (id, f) => `${BASE_URL}/files/${encodeURIComponent(id)}/${encodeURIComponent(f)}?sig=${fileSig(id, f)}`;
+function sha256File(p) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    fs.createReadStream(p).on('error', reject).on('data', d => h.update(d)).on('end', () => resolve(h.digest('hex')));
+  });
+}
 function stripeSecret() {
   if (process.env.STRIPE_SECRET_KEY) return process.env.STRIPE_SECRET_KEY;
   if (process.env.STRIPE_SECRET_KEY_ENC) {
@@ -67,15 +81,85 @@ async function notify(order, why) {
     const p = path.join(UPLOADS, g.file), size = fs.statSync(p).size;
     const sizes = g.lines.map(i => `${i.qty}x_${i.size}_${i.finish}`).join('+');
     if (used + size <= MAX_ATTACH) { used += size; attachments.push({ filename: `${sizes}_${g.originalName}`, path: p }); }
-    else links.push(`${g.photo ? 'Photo ' + g.photo + ' ' : ''}${g.originalName}: ${BASE_URL}/admin/file/${g.file}`);
+    else links.push(`${g.photo ? 'Photo ' + g.photo + ' ' : ''}${g.originalName}: ${FILES_CONFIRM_TOKEN ? fileLink(order.id, g.file) : BASE_URL + '/admin/file/' + g.file}`);
   }
-  const extra = links.length ? `\n\nNot attached (over ${MAX_ATTACH / 1048576} MB) – download from admin (password required):\n${links.join('\n')}` : '';
+  const extra = links.length ? `\n\nNot attached (over ${MAX_ATTACH / 1048576} MB) – download here${FILES_CONFIRM_TOKEN ? '' : ' from admin (password required)'}:\n${links.join('\n')}` : '';
   await send({ to: OWNER_EMAIL, replyTo: order.customer.email, subject: `New Luma Prints order ${order.id} – ${order.customer.name} – ${money(order.total)} (${why})`,
-    text: summary(order) + extra + `\n\nAll orders: ${BASE_URL}/admin`, attachments });
+    text: summary(order) + extra + manifestText(order) + `\n\nAll orders: ${BASE_URL}/admin`, attachments });
   await send({ to: order.customer.email, replyTo: OWNER_EMAIL, subject: `We received your Luma Prints order ${order.id}`,
     text: `Hi ${order.customer.name},\n\nThank you for your order! Here is a summary:\n\n` + summary(order) +
       `\n\n${order.paymentMethod === 'venmo' ? 'Please send ' + money(order.total) + ' on Venmo to @' + VENMO_USERNAME + ' and put ' + order.id + ' in the note. Then open your order link and tap I\'ve paid.' : order.paymentMethod === 'xmoney' ? 'Please send ' + money(order.total) + ' with X Money to @' + X_MONEY_HANDLE + ' and put ' + order.id + ' in the note.' : order.payment === 'pending' ? 'Once your payment is complete we will start printing.' : order.payment === 'paid' || String(order.payment).includes('customer reported') ? 'Your payment is confirmed or reported. We will verify and start printing.' : 'We will contact you to arrange payment.'}\nQuestions? Just reply to this email.\n\nLuma Prints` });
 }
+// what the email bot should have received for this order
+function manifestOf(o) {
+  return (o.files || []).map(f => ({ file: f.file, originalName: f.originalName, attachmentName: f.attachmentName, photo: f.photo, bytes: f.bytes, sha256: f.sha256 }));
+}
+function manifestText(o) {
+  const m = manifestOf(o);
+  if (!m.length) return '';
+  return `\n\nFILE MANIFEST (${m.length} file${m.length === 1 ? '' : 's'}; the website keeps them until you confirm):\n` +
+    m.map((f, i) => `${i + 1}. ${f.originalName} | ${f.bytes} bytes | sha256 ${f.sha256} | id ${f.file}`).join('\n') +
+    (FILES_CONFIRM_TOKEN ? `\n\nAfter checking every file, confirm here (this deletes them from the website): ${confirmLink(o.id)}` : `\n\nAfter checking every file, confirm in admin: ${BASE_URL}/admin`);
+}
+async function buildManifest(lines) {
+  const out = [];
+  for (const g of photoGroups(lines)) {
+    const p = path.join(UPLOADS, g.file);
+    let meta = null;
+    try { meta = JSON.parse(fs.readFileSync(metaPath(g.file), 'utf8')); } catch { /* old one-request upload */ }
+    const bytes = fs.statSync(p).size;
+    const sha256 = meta && meta.sha256 && meta.size === bytes ? meta.sha256 : await sha256File(p);
+    out.push({ file: g.file, originalName: g.originalName, attachmentName: `${g.lines.map(i => `${i.qty}x_${i.size}_${i.finish}`).join('+')}_${g.originalName}`, photo: g.photo || 0, bytes, sha256 });
+  }
+  return out;
+}
+// Check every held file against the recorded size and sha256. Returns problems ([] = all good).
+async function verifyOrderFiles(o, received) {
+  const problems = [];
+  const files = o.files || [];
+  if (!files.length) problems.push({ error: 'This order has no file manifest.' });
+  for (const f of files) {
+    const p = path.join(UPLOADS, path.basename(f.file));
+    if (!fs.existsSync(p)) { problems.push({ file: f.file, originalName: f.originalName, error: 'missing on server' }); continue; }
+    const bytes = fs.statSync(p).size;
+    if (bytes !== f.bytes) { problems.push({ file: f.file, originalName: f.originalName, error: `size ${bytes} does not match recorded ${f.bytes}` }); continue; }
+    if (await sha256File(p) !== f.sha256) problems.push({ file: f.file, originalName: f.originalName, error: 'sha256 does not match recorded value' });
+  }
+  if (Array.isArray(received)) {
+    // optional: what the bot says it received must match the manifest exactly
+    const want = new Set(files.map(f => f.sha256 + ':' + f.bytes));
+    const got = new Set(received.map(r => String((r || {}).sha256 || '').toLowerCase() + ':' + Number((r || {}).bytes)));
+    for (const f of files) if (!got.has(f.sha256 + ':' + f.bytes)) problems.push({ file: f.file, originalName: f.originalName, error: 'not in the list of files you received' });
+    for (const g of got) if (!want.has(g)) problems.push({ error: 'received a file that is not part of this order: ' + g });
+  }
+  return problems;
+}
+const orderLocks = new Set();
+// Delete an order's photos after the email bot (or owner) confirms it received all of them.
+async function confirmFilesReceived(id, by, received) {
+  const o = loadOrder(id);
+  if (o.filesDeleted) return { status: 200, body: { ok: true, already: true, orderId: o.id, filesReceivedAt: o.filesReceivedAt, manifest: manifestOf(o) } };
+  if (orderLocks.has(o.id)) return { status: 409, body: { ok: false, error: 'Confirmation already in progress.' } };
+  orderLocks.add(o.id);
+  try {
+    const problems = await verifyOrderFiles(o, received);
+    if (problems.length) return { status: 409, body: { ok: false, error: 'Files did not verify. Nothing was deleted.', problems, manifest: manifestOf(o) } };
+    for (const f of o.files) {
+      fs.rmSync(path.join(UPLOADS, path.basename(f.file)), { force: true });
+      fs.rmSync(metaPath(path.basename(f.file)), { force: true });
+    }
+    const now = new Date().toISOString();
+    o.filesReceivedAt = now; o.filesDeleted = true; o.filesDeletedAt = now; o.filesConfirmedBy = by;
+    saveOrder(o);
+    return { status: 200, body: { ok: true, already: false, orderId: o.id, filesReceivedAt: now, deleted: o.files.length, manifest: manifestOf(o) } };
+  } finally { orderLocks.delete(o.id); }
+}
+function bearerOk(req) {
+  const h = String(req.headers.authorization || '');
+  return !!FILES_CONFIRM_TOKEN && h.startsWith('Bearer ') && safeEq(h.slice(7).trim(), FILES_CONFIRM_TOKEN);
+}
+const cleanId = s => String(s || '').replace(/[^\w-]/g, '');
+const orderExists = id => !!id && fs.existsSync(path.join(ORDERS, id + '.json'));
 // group saved lines by their uploaded file (older orders have one file per line)
 function photoGroups(items) {
   const map = new Map();
@@ -138,13 +222,17 @@ function cleanupStaged() {
   try {
     if (!(UPLOAD_TTL_DAYS > 0)) return;
     const used = new Set();
-    for (const f of fs.readdirSync(ORDERS)) if (f.endsWith('.json')) { try { JSON.parse(fs.readFileSync(path.join(ORDERS, f), 'utf8')).items.forEach(i => used.add(i.file)); } catch { /* skip */ } }
+    for (const f of fs.readdirSync(ORDERS)) if (f.endsWith('.json')) {
+      try { const o = JSON.parse(fs.readFileSync(path.join(ORDERS, f), 'utf8')); (o.items || []).forEach(i => used.add(i.file)); (o.files || []).forEach(x => used.add(x.file)); }
+      catch { return; /* an unreadable order: skip cleanup entirely rather than risk its files */ }
+    }
     const cutoff = Date.now() - UPLOAD_TTL_DAYS * 86400000;
     for (const f of fs.readdirSync(UPLOAD_META)) {
       if (!f.endsWith('.json')) continue;
       try {
         const m = JSON.parse(fs.readFileSync(path.join(UPLOAD_META, f), 'utf8'));
-        if (used.has(m.file) || Date.parse(m.createdAt) > cutoff) continue;
+        // files that belong to an order are never removed by time, only by confirm-received
+        if (m.order || used.has(m.file) || !(Date.parse(m.createdAt) <= cutoff)) continue;
         fs.rmSync(path.join(UPLOADS, path.basename(m.file)), { force: true });
         fs.rmSync(path.join(UPLOAD_META, f), { force: true });
       } catch { /* skip */ }
@@ -190,9 +278,11 @@ app.post('/api/uploads', (req, res) => {
     if (err) return res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Each file must be 50 MB or smaller.' : 'Upload failed. Please try again.' });
     const f = req.file;
     if (!f) return res.status(400).json({ error: 'Please choose a JPG, PNG, WebP or PDF file.' });
-    const meta = { id: f.filename, file: f.filename, originalName: f.originalname, mimetype: f.mimetype, size: f.size, createdAt: new Date().toISOString() };
-    fs.writeFileSync(metaPath(f.filename), JSON.stringify(meta));
-    res.json({ id: f.filename, name: f.originalname, size: f.size });
+    sha256File(f.path).then(sha256 => {
+      const meta = { id: f.filename, file: f.filename, originalName: f.originalname, mimetype: f.mimetype, size: f.size, sha256, createdAt: new Date().toISOString() };
+      fs.writeFileSync(metaPath(f.filename), JSON.stringify(meta));
+      res.json({ id: f.filename, name: f.originalname, size: f.size, sha256 });
+    }, () => res.status(500).json({ error: 'Upload failed. Please try again.' }));
   });
 });
 
@@ -226,7 +316,13 @@ app.post('/api/orders', (req, res, next) => upload.array('photos')(req, res, err
       createdAt: new Date().toISOString(), customer: { name: b.name, email: b.email, phone: b.phone || '' },
       delivery, address: delivery === 'shipping' ? b.address : '', notes: b.notes || '', items: lines, subtotal, shipping,
       total: +(subtotal + shipping).toFixed(2), payment: paymentStatus, paymentMethod: payMethod, accessToken, status: 'new' };
+    // record size + sha256 of every file; files stay on disk until confirm-received
+    order.files = await buildManifest(lines);
+    order.filesDeleted = false;
     saveOrder(order);
+    for (const f of order.files) {
+      try { const mp = metaPath(f.file); if (fs.existsSync(mp)) { const m = JSON.parse(fs.readFileSync(mp, 'utf8')); m.order = order.id; fs.writeFileSync(mp, JSON.stringify(m)); } } catch { /* order JSON already protects it */ }
+    }
     if (tbd) { notify(order, 'new inquiry (price to confirm)'); return res.json({ redirect: `/success.html?order=${order.id}&quote=1` }); }
     if (payMethod === 'venmo' || payMethod === 'xmoney') {
       const who = payMethod === 'venmo' ? `Venmo @${VENMO_USERNAME}` : `X Money @${X_MONEY_HANDLE}`;
@@ -287,6 +383,60 @@ app.post('/api/orders/:id/paid', express.json(), async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message || 'Could not update order.' }); }
 });
 
+// ---- email bot: confirm all files received, then delete them from the website ----
+// API: POST /api/orders/:id/confirm-received with "Authorization: Bearer FILES_CONFIRM_TOKEN"
+// (or the signed "sig" from the order email). Optional JSON body { received: [{ sha256, bytes }] }.
+app.get('/api/orders/:id/manifest', (req, res) => {
+  const id = cleanId(req.params.id);
+  if (!orderExists(id)) return res.status(404).json({ error: 'Order not found.' });
+  if (!bearerOk(req) && !(FILES_CONFIRM_TOKEN && safeEq(req.query.sig, confirmSig(id)))) return res.status(401).json({ error: 'Not authorized.' });
+  const o = loadOrder(id);
+  res.json({ orderId: o.id, filesDeleted: !!o.filesDeleted, filesReceivedAt: o.filesReceivedAt || null, manifest: manifestOf(o) });
+});
+app.post('/api/orders/:id/confirm-received', express.json(), express.urlencoded({ extended: false }), async (req, res) => {
+  const id = cleanId(req.params.id);
+  if (!FILES_CONFIRM_TOKEN) return res.status(503).json({ error: 'Confirm is disabled: set FILES_CONFIRM_TOKEN.' });
+  const viaBearer = bearerOk(req), viaSig = orderExists(id) && safeEq((req.body || {}).sig, confirmSig(id));
+  if (!viaBearer && !viaSig) return res.status(401).json({ error: 'Not authorized.' });
+  if (!orderExists(id)) return res.status(404).json({ error: 'Order not found.' });
+  let received = (req.body || {}).received;
+  if (typeof received === 'string') { try { received = JSON.parse(received); } catch { return res.status(400).json({ error: 'received must be a JSON list.' }); } }
+  try {
+    const r = await confirmFilesReceived(id, viaBearer ? 'email bot (API)' : 'confirm link', received);
+    if (!viaBearer && req.is('application/x-www-form-urlencoded')) return res.status(r.status).type('html').send(confirmPage(loadOrder(id), null, r.body));
+    res.status(r.status).json(r.body);
+  } catch (e) { res.status(500).json({ error: 'Could not confirm: ' + e.message }); }
+});
+function confirmPage(o, sig, result) {
+  const m = manifestOf(o);
+  const rows = m.map((f, i) => `<tr><td>${i + 1}</td><td>${esc(f.originalName)}</td><td>${f.bytes.toLocaleString()} bytes</td><td><code style="font-size:.72em;word-break:break-all">${esc(f.sha256)}</code></td></tr>`).join('');
+  let body;
+  if (result && result.ok) body = `<p class="banner">${result.already ? 'Already confirmed' : 'Confirmed'}: all ${m.length} file(s) were received, and they have been deleted from the website.</p>`;
+  else if (result) body = `<p class="banner">${esc(result.error)}</p><ul>${(result.problems || []).map(p => `<li>${esc(p.originalName || '')} ${esc(p.error)}</li>`).join('')}</ul>`;
+  else if (o.filesDeleted) body = `<p class="banner">Files were already confirmed received on ${esc(new Date(o.filesReceivedAt).toLocaleString())} and deleted from the website.</p>`;
+  else body = `<p>Check that you received every file below. Confirming deletes them from the website. The order record stays.</p>
+    <form method="post" action="/api/orders/${esc(o.id)}/confirm-received"><input type="hidden" name="sig" value="${esc(sig)}"><button class="btn" type="submit">Confirm all ${m.length} file(s) received</button></form>`;
+  return `<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Confirm files · ${esc(o.id)}</title><link rel=stylesheet href="/style.css">
+  <main class="wrap" style="padding:32px 22px"><h1 style="font-size:2rem">Order ${esc(o.id)} files</h1>${body}
+  <table style="width:100%;border-collapse:collapse;margin-top:18px;font-size:.9rem"><tr><th align=left>#</th><th align=left>File</th><th align=left>Size</th><th align=left>sha256</th></tr>${rows}</table></main>`;
+}
+// GET only shows the page; deleting needs the POST button (link scanners only GET).
+app.get('/orders/:id/confirm-received', (req, res) => {
+  const id = cleanId(req.params.id);
+  if (!FILES_CONFIRM_TOKEN || !orderExists(id) || !safeEq(req.query.sig, confirmSig(id))) return res.status(404).send('Link not valid.');
+  res.set('Cache-Control', 'no-store').type('html').send(confirmPage(loadOrder(id), String(req.query.sig)));
+});
+// signed download link for files too big to attach to the owner email
+app.get('/files/:id/:f', (req, res) => {
+  const id = cleanId(req.params.id), f = path.basename(req.params.f);
+  if (!FILES_CONFIRM_TOKEN || !orderExists(id) || !safeEq(req.query.sig, fileSig(id, f))) return res.status(404).send('Link not valid.');
+  const o = loadOrder(id), entry = (o.files || []).find(x => x.file === f);
+  if (!entry) return res.status(404).send('Link not valid.');
+  const p = path.join(UPLOADS, f);
+  if (o.filesDeleted || !fs.existsSync(p)) return res.status(410).send(o.filesDeleted ? `This file was confirmed received on ${new Date(o.filesReceivedAt).toLocaleString()} and has been deleted from the website.` : 'This file is missing from the website.');
+  res.download(p, entry.originalName);
+});
+
 // ---- admin (HTTP Basic auth) ----
 function auth(req, res, next) {
   const [u, p] = Buffer.from((req.headers.authorization || '').split(' ')[1] || '', 'base64').toString().split(':');
@@ -294,12 +444,28 @@ function auth(req, res, next) {
   if (p === ADMIN_PASSWORD) return next();
   res.set('WWW-Authenticate', 'Basic realm="Luma Prints Admin"').status(401).send('Authentication required');
 }
+function diskUsage() {
+  let uploadBytes = 0, uploadCount = 0;
+  for (const f of fs.readdirSync(UPLOADS)) { try { uploadBytes += fs.statSync(path.join(UPLOADS, f)).size; uploadCount++; } catch { /* gone */ } }
+  let total = null, free = null;
+  try { const s = fs.statfsSync(DATA); total = s.blocks * s.bsize; free = s.bavail * s.bsize; } catch { /* not supported */ }
+  return { uploadBytes, uploadCount, total, free };
+}
+const mb = n => n == null ? '?' : (n / 1048576).toFixed(n < 10485760 ? 2 : 0) + ' MB';
+const heldBytes = o => (o.files || []).reduce((s, f) => s + (f.bytes || 0), 0);
 app.get('/admin', auth, (req, res) => {
-  const rows = allOrders().map(o => `<div class="card"><div class="hd"><b>${esc(o.id)}</b> <span>${new Date(o.createdAt).toLocaleString()}</span>
-   <span class="pill ${o.payment === 'paid' ? 'ok' : 'warn'}">${esc(o.payment)}</span></div>
+  const orders = allOrders();
+  const du = diskUsage();
+  const holding = orders.filter(o => !o.filesDeleted);
+  const diskCard = `<div class="card"><b>Disk</b><p>Photos on disk: <b>${du.uploadCount}</b> files, <b>${mb(du.uploadBytes)}</b>${du.total ? ` · Disk free: <b>${mb(du.free)}</b> of ${mb(du.total)} (${Math.round(100 - du.free / du.total * 100)}% used)` : ''}</p>
+   <p>Orders still holding files: <b>${holding.length}</b></p>${holding.length ? `<ul>${holding.map(o => `<li><a href="#${esc(o.id)}">${esc(o.id)}</a> · ${esc(o.customer.name)} · ${(o.files || []).length || o.items.length} file(s) · ${mb(heldBytes(o))} · since ${new Date(o.createdAt).toLocaleString()}</li>`).join('')}</ul>` : ''}</div>`;
+  const rows = orders.map(o => `<div class="card" id="${esc(o.id)}"><div class="hd"><b>${esc(o.id)}</b> <span>${new Date(o.createdAt).toLocaleString()}</span>
+   <span class="pill ${o.payment === 'paid' ? 'ok' : 'warn'}">${esc(o.payment)}</span>
+   <span class="pill ${o.filesDeleted ? 'ok' : 'warn'}">${o.filesDeleted ? 'Received &amp; deleted ' + esc(new Date(o.filesReceivedAt).toLocaleString()) : 'Files held'}</span></div>
    <p>${esc(o.customer.name)} · <a href="mailto:${esc(o.customer.email)}">${esc(o.customer.email)}</a> · ${esc(o.customer.phone)}<br>
    <b>${o.delivery === 'shipping' ? 'Ship to:' : 'Pickup'}</b> ${esc(o.address)} ${o.notes ? '<br><i>Notes: ' + esc(o.notes) + '</i>' : ''}</p>
-   <ul>${o.items.map(i => `<li>${i.photo ? '<b>Photo ' + esc(i.photo) + '</b> · ' : ''}${i.qty} × ${i.size} <i>${esc(i.finish)}</i> — <a href="/admin/file/${esc(i.file)}" download="${esc(i.originalName)}">${esc(i.originalName)}</a> (${i.priceTBD ? '[price TBD]' : '$' + i.lineTotal.toFixed(2)})</li>`).join('')}</ul>
+   <ul>${o.items.map(i => `<li>${i.photo ? '<b>Photo ' + esc(i.photo) + '</b> · ' : ''}${i.qty} × ${i.size} <i>${esc(i.finish)}</i> — ${o.filesDeleted ? esc(i.originalName) + ' <span class="mute">(file deleted after confirmed received)</span>' : `<a href="/admin/file/${esc(i.file)}" download="${esc(i.originalName)}">${esc(i.originalName)}</a>`} (${i.priceTBD ? '[price TBD]' : '$' + i.lineTotal.toFixed(2)})</li>`).join('')}</ul>
+   ${!o.filesDeleted && (o.files || []).length ? `<form method="post" action="/admin/orders/${esc(o.id)}/confirm-received" onsubmit="return confirm('Delete this order\'s ${o.files.length} file(s) from the website? Only do this after they were received.')"><button>Confirm files received &amp; delete from website</button></form>` : ''}
    <p>Total: <b>$${o.total.toFixed(2)}</b></p>
    <form method="post" action="/admin/orders/${esc(o.id)}/status"><select name="status">${['new', 'printing', 'ready', 'shipped', 'completed'].map(s => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
    <label><input type="checkbox" name="paid" ${o.payment === 'paid' ? 'checked' : ''}> paid</label> <button>Update</button></form></div>`).join('') || '<p>No orders yet.</p>';
@@ -307,7 +473,7 @@ app.get('/admin', auth, (req, res) => {
     .map(m => `<div class="card"><b>${esc(m.name)}</b> · <a href="mailto:${esc(m.email)}">${esc(m.email)}</a> ${esc(m.phone)} · ${new Date(m.createdAt).toLocaleString()}<p style="white-space:pre-wrap">${esc(m.message)}</p></div>`).join('') || '<p>No messages yet.</p>';
   res.send(`<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><title>Admin · Luma Prints</title><link rel=stylesheet href="/style.css">
   <style>.card{background:#fff;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 2px 8px #0001}.hd{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.pill{padding:2px 10px;border-radius:99px;font-size:.8em}.ok{background:#d1fae5}.warn{background:#fee2e2}.card a{color:#8a5a3b}</style>
-  <main class="wrap"><h1>Orders</h1>${rows}<h1>Contact messages</h1>${msgs}</main>`);
+  <main class="wrap"><h1>Orders</h1>${diskCard}${rows}<h1>Contact messages</h1>${msgs}</main>`);
 });
 app.post('/admin/orders/:id/status', auth, express.urlencoded({ extended: false }), (req, res) => {
   const o = loadOrder(req.params.id.replace(/[^\w-]/g, ''));
@@ -315,11 +481,24 @@ app.post('/admin/orders/:id/status', auth, express.urlencoded({ extended: false 
   if (req.body.paid) o.payment = 'paid'; else if (o.payment === 'paid') o.payment = 'unpaid';
   saveOrder(o); res.redirect('/admin');
 });
-app.get('/admin/file/:f', auth, (req, res) => res.download(path.join(UPLOADS, path.basename(req.params.f))));
+app.post('/admin/orders/:id/confirm-received', auth, async (req, res) => {
+  const id = cleanId(req.params.id);
+  if (!orderExists(id)) return res.status(404).send('Order not found.');
+  const r = await confirmFilesReceived(id, 'admin');
+  if (r.status !== 200) return res.status(r.status).type('html').send(confirmPage(loadOrder(id), null, r.body));
+  res.redirect('/admin#' + id);
+});
+app.get('/admin/file/:f', auth, (req, res) => {
+  const f = path.basename(req.params.f), p = path.join(UPLOADS, f);
+  if (fs.existsSync(p)) return res.download(p);
+  const o = allOrders().find(x => (x.files || []).some(y => y.file === f) || x.items.some(i => i.file === f));
+  if (o && o.filesDeleted) return res.status(410).send(`This file (order ${esc(o.id)}) was confirmed received on ${esc(new Date(o.filesReceivedAt).toLocaleString())} and has been deleted from the website.`);
+  res.status(404).send('File not found.');
+});
 
 if (require.main === module) {
   cleanupStaged();
   setInterval(cleanupStaged, 6 * 3600000).unref();
   app.listen(PORT, '0.0.0.0', () => console.log(`Luma Prints on ${BASE_URL} ${stripe ? '(Stripe live/test key loaded)' : '(DEMO MODE: no STRIPE_SECRET_KEY, orders saved as unpaid)'}`));
 }
-module.exports = { app, buildLines, stripeLineItems, photoGroups, summary, cleanupStaged };
+module.exports = { app, buildLines, stripeLineItems, photoGroups, summary, cleanupStaged, manifestText, confirmSig, fileSig };

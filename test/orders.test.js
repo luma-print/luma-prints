@@ -14,6 +14,8 @@ delete process.env.STRIPE_SECRET_KEY_ENC;
 delete process.env.BREVO_API_KEY;
 delete process.env.SMTP_HOST;
 delete process.env.SMTP_USER;
+process.env.FILES_CONFIRM_TOKEN = 'test-only-confirm-token';
+process.env.ADMIN_PASSWORD = 'test-only-admin';
 
 const { app } = require('../server');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -279,4 +281,119 @@ test('cleanup removes only old uploads that never made it into an order', async 
   assert.equal(fs.existsSync(path.join(dir, 'uploads', used.json.id)), true);
   assert.equal(fs.existsSync(path.join(dir, 'uploads', old.json.id)), false);
   assert.equal(fs.existsSync(path.join(dir, 'uploads', fresh.json.id)), true);
+});
+
+// ---- files are held until the email bot confirms they were received ----
+const crypto = require('crypto');
+const BEARER = { authorization: 'Bearer test-only-confirm-token' };
+const ADMIN = { authorization: 'Basic ' + Buffer.from('admin:test-only-admin').toString('base64') };
+const sha = b => crypto.createHash('sha256').update(b).digest('hex');
+const upPath = f => path.join(dir, 'uploads', f);
+async function heldOrder(n = 2) {
+  const ids = [];
+  for (let i = 0; i < n; i++) ids.push((await stage(`held${i}.png`)).json.id);
+  const items = ids.map((_, i) => ({ finish: 'standard', size: '4x6', qty: 1, fileIndex: i }));
+  items.push({ finish: 'standard', size: '8x10', qty: 1, fileIndex: 0 });
+  const { status, json } = await orderStaged(ids, items);
+  assert.equal(status, 200, JSON.stringify(json));
+  return saved(idFrom(json));
+}
+const confirm = (id, headers = BEARER, body) => fetch(`${base}/api/orders/${id}/confirm-received`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body || {}) });
+
+test('order files are held with a sha256 manifest and survive the time-based cleanup', async () => {
+  const o = await heldOrder(2);
+  assert.equal(o.files.length, 2, 'two unique files, three lines');
+  assert.equal(o.filesDeleted, false);
+  for (const f of o.files) { assert.equal(f.bytes, PNG.length); assert.equal(f.sha256, sha(PNG)); assert.ok(fs.existsSync(upPath(f.file))); }
+  // make everything look 60 days old, including the order itself, then run cleanup
+  const { cleanupStaged, manifestText } = require('../server');
+  for (const f of o.files) { const mp = path.join(dir, 'upload-meta', f.file + '.json'); const m = JSON.parse(fs.readFileSync(mp)); assert.equal(m.order, o.id); m.createdAt = new Date(Date.now() - 60 * 86400000).toISOString(); fs.writeFileSync(mp, JSON.stringify(m)); }
+  const legacy = await post([{ finish: 'standard', size: '4x6', qty: 1 }]);
+  const lo = saved(idFrom(legacy.json));
+  cleanupStaged();
+  for (const f of o.files) assert.ok(fs.existsSync(upPath(f.file)), 'order file kept');
+  assert.ok(fs.existsSync(upPath(lo.files[0].file)), 'one-request order file kept');
+  const text = manifestText(o);
+  assert.match(text, /FILE MANIFEST \(2 files/);
+  assert.match(text, new RegExp(sha(PNG)));
+  assert.match(text, new RegExp(`/orders/${o.id}/confirm-received\\?sig=[a-f0-9]{64}`));
+  const man = await (await fetch(`${base}/api/orders/${o.id}/manifest`, { headers: BEARER })).json();
+  assert.deepEqual(man.manifest.map(f => [f.sha256, f.bytes]), o.files.map(f => [f.sha256, f.bytes]));
+});
+
+test('bad tokens are rejected and the confirm link page does not delete on GET', async () => {
+  const o = await heldOrder(1);
+  assert.equal((await confirm(o.id, { authorization: 'Bearer wrong' })).status, 401);
+  assert.equal((await confirm(o.id, {})).status, 401);
+  assert.equal((await confirm(o.id, {}, { sig: 'a'.repeat(64) })).status, 401);
+  assert.equal((await fetch(`${base}/api/orders/${o.id}/manifest`)).status, 401);
+  assert.equal((await fetch(`${base}/orders/${o.id}/confirm-received?sig=bad`)).status, 404);
+  const { confirmSig } = require('../server');
+  const page = await fetch(`${base}/orders/${o.id}/confirm-received?sig=${confirmSig(o.id)}`);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Confirm all 1 file\(s\) received/);
+  assert.ok(fs.existsSync(upPath(o.files[0].file)), 'GET must not delete');
+  assert.equal(saved(o.id).filesDeleted, false);
+  // the confirm page form (signed sig, POST) does delete
+  const form = await fetch(`${base}/api/orders/${o.id}/confirm-received`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'sig=' + confirmSig(o.id) });
+  assert.equal(form.status, 200);
+  assert.match(await form.text(), /have been deleted from the website/);
+  assert.equal(fs.existsSync(upPath(o.files[0].file)), false);
+});
+
+test('a checksum or size mismatch refuses deletion of every file in the order', async () => {
+  const o = await heldOrder(2);
+  const bad = Buffer.from(PNG); bad[bad.length - 1] ^= 0xff; // same size, different bytes
+  fs.writeFileSync(upPath(o.files[1].file), bad);
+  const r = await confirm(o.id);
+  assert.equal(r.status, 409);
+  const j = await r.json();
+  assert.match(j.error, /Nothing was deleted/);
+  assert.match(j.problems[0].error, /sha256/);
+  for (const f of o.files) assert.ok(fs.existsSync(upPath(f.file)));
+  assert.equal(saved(o.id).filesDeleted, false);
+  // the bot's own received list must match too
+  fs.writeFileSync(upPath(o.files[1].file), PNG);
+  const partial = await confirm(o.id, BEARER, { received: [{ sha256: sha(PNG), bytes: PNG.length + 1 }] });
+  assert.equal(partial.status, 409);
+  for (const f of o.files) assert.ok(fs.existsSync(upPath(f.file)));
+});
+
+test('confirm deletes the files, keeps the record, and repeating it is harmless', async () => {
+  const o = await heldOrder(2);
+  const r = await confirm(o.id, BEARER, { received: o.files.map(f => ({ sha256: f.sha256, bytes: f.bytes })) });
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.equal(j.ok, true); assert.equal(j.already, false); assert.equal(j.deleted, 2);
+  assert.equal(j.manifest.length, 2);
+  for (const f of o.files) assert.equal(fs.existsSync(upPath(f.file)), false);
+  const after = saved(o.id);
+  assert.equal(after.filesDeleted, true);
+  assert.ok(after.filesReceivedAt && after.filesDeletedAt);
+  assert.equal(after.items.length, 3);
+  assert.equal(after.total, o.total);
+  const again = await (await confirm(o.id)).json();
+  assert.equal(again.ok, true); assert.equal(again.already, true); assert.equal(again.filesReceivedAt, after.filesReceivedAt);
+  const dl = await fetch(`${base}/admin/file/${o.files[0].file}`, { headers: ADMIN });
+  assert.equal(dl.status, 410);
+  assert.match(await dl.text(), /confirmed received .* deleted from the website/);
+  const { fileSig } = require('../server');
+  assert.equal((await fetch(`${base}/files/${o.id}/${o.files[0].file}?sig=${fileSig(o.id, o.files[0].file)}`)).status, 410);
+  const admin = await (await fetch(`${base}/admin`, { headers: ADMIN })).text();
+  assert.match(admin, /Received &amp; deleted/);
+  assert.match(admin, /Files held/);
+  assert.match(admin, /Orders still holding files/);
+  assert.match(admin, /Photos on disk/);
+});
+
+test('signed download links work while files are held', async () => {
+  const o = await heldOrder(1);
+  const { fileSig } = require('../server');
+  const ok = await fetch(`${base}/files/${o.id}/${o.files[0].file}?sig=${fileSig(o.id, o.files[0].file)}`);
+  assert.equal(ok.status, 200);
+  assert.equal(sha(Buffer.from(await ok.arrayBuffer())), o.files[0].sha256);
+  assert.equal((await fetch(`${base}/files/${o.id}/${o.files[0].file}?sig=${'0'.repeat(64)}`)).status, 404);
+  const viaAdmin = await fetch(`${base}/admin/orders/${o.id}/confirm-received`, { method: 'POST', headers: ADMIN, redirect: 'manual' });
+  assert.equal(viaAdmin.status, 302);
+  assert.equal(saved(o.id).filesDeleted, true);
 });
