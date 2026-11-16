@@ -20,8 +20,16 @@ var fl=(P.flyers.tiers||[]).map(function(t){
   return '<div class="cell"><small>'+t.size+' · '+t.rangeLabel+' flyers</small><b>'+rate+'</b><small>per flyer · quote</small></div>';
 }).join('');
 m.innerHTML='<div class="tabs" role="tablist"><button role="tab" aria-selected="true" data-t="p-photo">Photo Prints</button><button role="tab" aria-selected="false" data-t="p-inv">Invitations &amp; Announcements</button><button role="tab" aria-selected="false" data-t="p-fly">Flyers</button></div>'+
-'<div class="panel" id="p-photo"><div class="intro"><h3>Photo Prints</h3><p>21 sizes from wallet-friendly 3×5s to statement 16×24s. <b>Matte, Glossy and Satin are the same price</b> — just pick your finish.</p><a class="btn" href="order.html?type=photo">Order Photo Prints</a></div><div class="ptable">'+photo+'</div></div>'+
-'<div class="panel" id="p-inv" hidden><div class="intro"><h3>Invitations &amp; Announcements</h3><p>Weddings, graduations, birth announcements, parties and holiday cards. Printed in packs on 100 lb or 120 lb card stock, Matte or Satin — same price for both paper weights and both finishes. Upload your design as JPG, PNG or PDF.</p><a class="btn" href="order.html?type=invitations">Order Invitations</a></div><div class="ptable wide">'+inv+'</div></div>'+
+'<div class="panel" id="p-photo"><div class="intro"><h3>Photo Prints</h3><p>21 sizes from wallet-friendly 3×5s to statement 16×24s. <b>Matte, Glossy and Satin are the same price</b> — just pick your finish.</p><p class="paper-note">Want a different paper type? <a href="contact.html?topic=paper">Message us</a> and we\'ll let you know what\'s possible.</p><a class="btn" href="order.html?type=photo">Order Photo Prints</a></div><div class="ptable">'+photo+'</div></div>'+
+'<div class="panel" id="p-inv" hidden><div class="intro"><h3>Invitations &amp; Announcements</h3><p>Weddings, graduations, birth announcements, parties and holiday cards. Printed in packs on 100 lb or 120 lb card stock, Matte or Satin — same price for both paper weights and both finishes. Upload your design as JPG, PNG or PDF.</p><p class="paper-note">Want a different paper type? <a href="contact.html?topic=paper">Message us</a> and we\'ll let you know what\'s possible.</p><a class="btn" href="order.html?type=invitations">Order Invitations</a></div><div class="ptable wide">'+inv+'</div></div>'+
 '<div class="panel" id="p-fly" hidden><div class="intro"><h3>Flyers</h3><p>Events, menus, promotions and business handouts. Minimum 25. The published rate is a range, so we confirm the exact total by email before you pay.</p><a class="btn" href="order.html?type=flyers">Order Flyers</a></div><div><div class="ptable wide">'+fl+'</div><p class="note">These ranges are not charged online. Quantities 51–99 and 501–999 have no published rate and stay quote-only too.</p></div></div>';
 var b=m.querySelectorAll('.tabs button');b.forEach(function(btn){btn.onclick=function(){b.forEach(function(o){o.setAttribute('aria-selected',o===btn);document.getElementById(o.dataset.t).hidden=o!==btn})}});
+})();
+
+(function(){
+var form=document.querySelector('form[name="contact"]');
+if(!form)return;
+if(new URLSearchParams(location.search).get('topic')!=='paper')return;
+var ta=form.querySelector('textarea[name="message"]');
+if(ta&&!ta.value)ta.value="Hi, I'd like to request a different paper type. Please let me know what's possible.";
 })();

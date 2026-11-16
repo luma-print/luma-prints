@@ -189,8 +189,13 @@ label.f{display:block;font-size:.82rem;font-weight:600;color:var(--ink2);margin-
 .item .ctl select,.item .ctl input{padding:9px 11px;font-size:.88rem}
 .item .side{display:flex;flex-direction:column;align-items:flex-end;gap:10px}.item .lt{font:700 1.05rem var(--sans);font-variant-numeric:tabular-nums;color:var(--ink)}
 .rm{border:1px solid var(--line);background:#fff;border-radius:10px;width:34px;height:34px;cursor:pointer;color:var(--mute)}.rm:hover{color:#B91C1C;border-color:#FCA5A5}
-@media(max-width:760px){.item{grid-template-columns:56px 1fr}.item .th{width:56px;height:56px}.item .ctl{grid-template-columns:1fr 1fr;grid-column:1/-1}.item .side{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center}}
+@media(max-width:760px){.item{grid-template-columns:56px 1fr}.item .th{width:56px;height:56px}.item .ctl,.item .ctl.has-paper{grid-template-columns:1fr 1fr;grid-column:1/-1}.item .side{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center}}
 .item.s{grid-template-columns:1fr}.item.s .ctl{grid-template-columns:1.5fr 1.2fr .8fr 96px}@media(max-width:760px){.item.s .ctl{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){
+  .item,.item.s{grid-template-columns:1fr}
+  .item .ctl,.item .ctl.has-paper,.item.s .ctl{grid-template-columns:1fr;grid-column:1/-1}
+  .item .ctl select,.item .ctl input{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+}
 .item.active{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}
 
 .order-layout{display:grid;grid-template-columns:1fr .95fr;gap:28px;align-items:start}
@@ -289,6 +294,11 @@ footer .logo .logo-lockup{height:56px}
 .flyer-unit b,.flyer-total b{font-family:var(--sans)}
 .flyer-range{color:var(--mute);font-size:.85rem}
 .line-note{margin:8px 0 0;color:var(--mute);font-size:.82rem}
+.paper-note{margin:10px 0 0;font-size:.86rem;color:var(--mute);line-height:1.45;max-width:38em}
+.paper-note a{color:var(--acc-dark);font-weight:600}
+.panel .intro .paper-note{margin:8px 0 14px}
+#studio-size .paper-note{margin:10px 0 4px}
+.item .paper-note{margin:8px 0 0}
 .field-error{color:#8A3B2A;font-size:.85rem;font-weight:600;margin:8px 0 0}
 #pending-flyer-qty,.flyer-qty{max-width:160px;margin:4px 0 10px}
 @media(max-width:640px){

@@ -545,3 +545,133 @@ test('a 150-photo order uploads in small requests and is saved in full', { timeo
   assert.equal(order.total, 103.5);
   await page.close();
 });
+
+test('customers can message about a different paper type', { timeout: 120000 }, async () => {
+  const photo = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=photo`);
+  await photo.waitForSelector('#studio-size .paper-note a');
+  const photoNote = await photo.$eval('#studio-size .paper-note', el => ({ text: el.innerText, href: el.querySelector('a').getAttribute('href') }));
+  assert.match(photoNote.text, /Want a different paper type/i);
+  assert.match(photoNote.text, /we.?ll let you know what.?s possible/i);
+  assert.equal(photoNote.href, 'contact.html?topic=paper');
+  await photo.close();
+
+  const inv = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=invitations`);
+  await inv.waitForSelector('#studio-size .paper-note a');
+  assert.match(await inv.$eval('#studio-size .paper-note', el => el.innerText), /Want a different paper type/i);
+  await (await inv.$('#files')).uploadFile(pngPath);
+  await inv.waitForSelector('.item .paper-note a');
+  const line = await inv.evaluate(() => ({
+    text: document.querySelector('.item .paper-note').innerText,
+    href: document.querySelector('.item .paper-note a').getAttribute('href'),
+    afterPaper: !!(document.querySelector('.item .paper') && document.querySelector('.item .paper').closest('.ctl').nextElementSibling && document.querySelector('.item .paper').closest('.ctl').nextElementSibling.classList.contains('paper-note'))
+  }));
+  assert.match(line.text, /Want a different paper type/i);
+  assert.equal(line.href, 'contact.html?topic=paper');
+  assert.equal(line.afterPaper, true);
+  await inv.select('.pt', 'photo');
+  await inv.waitForFunction(() => document.querySelector('.pt') && document.querySelector('.pt').value === 'photo');
+  assert.equal(await inv.$('.item .paper-note'), null);
+  assert.ok(await inv.$('#studio-size .paper-note'));
+  await inv.close();
+
+  const fly = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=flyers`);
+  await fly.waitForSelector('#studio-size .flyer-card');
+  assert.equal(await fly.$('#studio-size .paper-note'), null);
+  await fly.close();
+
+  const home = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/`);
+  await home.waitForSelector('#p-photo .paper-note a');
+  const photoIntro = await home.$eval('#p-photo .paper-note', el => ({ text: el.innerText, href: el.querySelector('a').getAttribute('href') }));
+  assert.match(photoIntro.text, /Want a different paper type/i);
+  assert.match(photoIntro.text, /we.?ll let you know what.?s possible/i);
+  assert.equal(photoIntro.href, 'contact.html?topic=paper');
+  await home.click('#menu button[data-t="p-inv"]');
+  await home.waitForSelector('#p-inv:not([hidden]) .paper-note a');
+  assert.match(await home.$eval('#p-inv .paper-note', el => el.innerText), /Want a different paper type/i);
+  await home.click('#menu button[data-t="p-fly"]');
+  await home.waitForSelector('#p-fly:not([hidden])');
+  assert.equal(await home.$('#p-fly .paper-note'), null);
+  await home.close();
+
+  const contact = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/contact.html?topic=paper`);
+  await contact.waitForSelector('form[name="contact"] textarea[name="message"]');
+  const filled = await contact.$eval('form[name="contact"] textarea[name="message"]', el => el.value);
+  assert.match(filled, /different paper type/i);
+  assert.match(filled, /what.?s possible/i);
+  await contact.close();
+
+  const blank = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/contact.html`);
+  await blank.waitForSelector('form[name="contact"] textarea[name="message"]');
+  assert.equal(await blank.$eval('form[name="contact"] textarea[name="message"]', el => el.value), '');
+  await blank.close();
+
+  const staticContact = await pageAt(1280, 900, `http://127.0.0.1:${STATIC_PORT}/contact.html?topic=paper`);
+  await staticContact.waitForSelector('form[name="contact"] textarea[name="message"]');
+  assert.match(await staticContact.$eval('form[name="contact"] textarea[name="message"]', el => el.value), /different paper type/i);
+  await staticContact.close();
+});
+
+test('phone order lines keep product, finish, paper and qty values readable', { timeout: 120000 }, async () => {
+  function ctlInfo() {
+    const ctl = document.querySelector('.item .ctl');
+    const style = getComputedStyle(ctl);
+    const fields = [...ctl.children].map(div => {
+      const control = div.querySelector('select,input');
+      const label = (div.querySelector('label') || {}).textContent || '';
+      const text = control.tagName === 'SELECT' ? control.options[control.selectedIndex].text : String(control.value);
+      return {
+        label,
+        text,
+        width: Math.round(control.getBoundingClientRect().width),
+        colSpan: getComputedStyle(div).gridColumnStart === '1' && getComputedStyle(div).gridColumnEnd === '-1'
+      };
+    });
+    return {
+      columns: style.gridTemplateColumns.split(' ').filter(Boolean).length,
+      hasPaper: ctl.classList.contains('has-paper'),
+      fields
+    };
+  }
+
+  const desktop = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=invitations`);
+  await (await desktop.$('#files')).uploadFile(pngPath);
+  await desktop.waitForSelector('.item .ctl.has-paper');
+  const desk = await desktop.evaluate(ctlInfo);
+  assert.equal(desk.columns, 4);
+  assert.equal(desk.hasPaper, true);
+  await desktop.close();
+
+  const inv = await pageAt(390, 844, `http://127.0.0.1:${PORT}/order.html?type=invitations`);
+  await (await inv.$('#files')).uploadFile(pngPath);
+  await inv.waitForSelector('.item .ctl.has-paper');
+  await inv.select('.paper', 'Card stock 120 lb');
+  await inv.waitForFunction(() => document.querySelector('.paper') && document.querySelector('.paper').value === 'Card stock 120 lb');
+  const phoneInv = await inv.evaluate(ctlInfo);
+  assert.equal(phoneInv.columns, 1);
+  assert.equal(phoneInv.fields.length, 4);
+  assert.equal(phoneInv.fields[0].text, 'Invitations & Announcements');
+  assert.equal(phoneInv.fields[1].text, 'Matte');
+  assert.equal(phoneInv.fields[2].text, 'Card stock 120 lb');
+  for (const f of phoneInv.fields) assert.ok(f.width >= 280, f.label + ' too narrow: ' + f.width);
+  await inv.close();
+
+  const photo = await pageAt(390, 844, `http://127.0.0.1:${PORT}/order.html?type=photo`);
+  await (await photo.$('#files')).uploadFile(pngPath);
+  await photo.waitForSelector('.item .ctl');
+  const phonePhoto = await photo.evaluate(ctlInfo);
+  assert.equal(phonePhoto.columns, 1);
+  assert.equal(phonePhoto.hasPaper, false);
+  assert.equal(phonePhoto.fields[0].text, 'Photo Prints');
+  assert.equal(phonePhoto.fields[1].text, 'Matte');
+  for (const f of phonePhoto.fields) assert.ok(f.width >= 280, f.label + ' too narrow: ' + f.width);
+  await photo.close();
+
+  const fly = await pageAt(390, 844, `http://127.0.0.1:${PORT}/order.html?type=flyers`);
+  await (await fly.$('#files')).uploadFile(pngPath);
+  await fly.waitForSelector('.item .ctl');
+  const phoneFly = await fly.evaluate(ctlInfo);
+  assert.equal(phoneFly.columns, 1);
+  assert.equal(phoneFly.fields[0].text, 'Flyers');
+  for (const f of phoneFly.fields) assert.ok(f.width >= 280, f.label + ' too narrow: ' + f.width);
+  await fly.close();
+});
