@@ -16,6 +16,7 @@ const finsOf = t => Object.keys(PR[t].keys);
 const papersOf = t => (PR[t] && PR[t].papers) || [];
 const defaultPaper = t => papersOf(t)[0] || '';
 const paperOf = it => { const papers = papersOf(it.type); return papers.includes(it.paper) ? it.paper : defaultPaper(it.type); };
+const paperRequestNote = t => (t === 'photo' || t === 'invitations') ? '<p class="paper-note">Want a different paper type? <a href="contact.html?topic=paper">Message us</a> and we\'ll let you know what\'s possible.</p>' : '';
 function defaultFin(t) {
   const fins = finsOf(t);
   if (fins.includes(urlFinish)) return urlFinish;
@@ -249,7 +250,7 @@ function renderStudio(force) {
     const finTog = fins.length > 1 ? `<div class="finish-tog" role="group" aria-label="Finish">${fins.map(f => `<button type="button" data-fin="${esc(f)}" aria-pressed="${f === c.fin}">${esc(f)}</button>`).join('')}</div>` : '';
     const paperTog = papers.length ? `<p class="opt-label">Paper</p><div class="finish-tog paper-tog" role="group" aria-label="Paper">${papers.map(pv => `<button type="button" data-paper="${esc(pv)}" aria-pressed="${pv === c.paper}">${esc(pv)}</button>`).join('')}</div>` : '';
     if (c.type === 'flyers') host.innerHTML = finTog + paperTog + flyerCard(c.qty, !c.item);
-    else host.innerHTML = finTog + paperTog + sizeButtons(c.type, c.fin, c.size);
+    else host.innerHTML = finTog + paperTog + paperRequestNote(c.type) + sizeButtons(c.type, c.fin, c.size);
     host.querySelectorAll('.finish-tog button[data-fin]').forEach(b => b.onclick = () => setCtxFin(b.dataset.fin));
     host.querySelectorAll('.finish-tog button[data-paper]').forEach(b => b.onclick = () => setCtxPaper(b.dataset.paper));
     bindSizeGroup(host, setCtxSize);
@@ -328,7 +329,7 @@ function render() {
 <div><label>Finish</label><select class="fin" ${fins.length < 2 ? 'disabled' : ''}>${fins.map(f => `<option ${f === it.fin ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
 ${papers.length ? `<div><label>Paper</label><select class="paper">${papers.map(pv => `<option ${pv === paperOf(it) ? 'selected' : ''}>${esc(pv)}</option>`).join('')}</select></div>` : ''}
 <div><label>${it.type === 'flyers' ? 'Flyers' : packs ? 'Packs' : 'Qty'}</label><input class="qty" type="number" inputmode="numeric" min="${min}" max="${max}" step="1" value="${Number.isInteger(it.qty) ? it.qty : ''}" aria-label="${it.type === 'flyers' ? 'Flyer quantity, minimum ' + min : 'Quantity'}"></div>
-</div><div class="size-block">${it.type === 'flyers' ? flyerCard(it.qty, false).replace(' id="flyer-quote"', '') : sizeButtons(it.type, it.fin, it.size)}</div><p class="line-note"></p><p class="field-error" hidden></p>${it.type === 'flyers' ? '' : `<button type="button" class="add-size" aria-label="Add another size of this photo"><span aria-hidden="true">＋</span> Add another size</button>`}</div>
+</div>${it.type === 'invitations' ? paperRequestNote(it.type) : ''}<div class="size-block">${it.type === 'flyers' ? flyerCard(it.qty, false).replace(' id="flyer-quote"', '') : sizeButtons(it.type, it.fin, it.size)}</div><p class="line-note"></p><p class="field-error" hidden></p>${it.type === 'flyers' ? '' : `<button type="button" class="add-size" aria-label="Add another size of this photo"><span aria-hidden="true">＋</span> Add another size</button>`}</div>
 <div class="side"><b class="lt"></b><button type="button" class="rm" aria-label="Remove">✕</button></div>`;
     el.querySelector('.nm').textContent = it.file.name;
     if (group.length > 1) {
