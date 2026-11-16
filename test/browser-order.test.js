@@ -382,7 +382,7 @@ test('one photo can be ordered in two sizes with Add another size, uploaded once
 
 
 
-test('photo finish choices include Satin at the same price; invitations do not', { timeout: 120000 }, async () => {
+test('photo finish choices include Satin at the same price; invitations offer Matte and Satin', { timeout: 120000 }, async () => {
   const before = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json'));
   const page = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=photo&size=4x6`);
   await page.waitForSelector('#studio-size .finish-tog button[data-fin="Satin"]');
@@ -421,8 +421,8 @@ test('photo finish choices include Satin at the same price; invitations do not',
   const inv = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=invitations`);
   await inv.waitForSelector('#studio-size .finish-tog button[data-fin="Matte"]');
   const invFins = await inv.$$eval('#studio-size .finish-tog button[data-fin]', bs => bs.map(b => b.dataset.fin));
-  assert.deepEqual(invFins, ['Matte', 'Glossy']);
-  assert.equal(await inv.$('#studio-size .finish-tog button[data-fin="Satin"]'), null);
+  assert.deepEqual(invFins, ['Matte', 'Satin']);
+  assert.equal(await inv.$('#studio-size .finish-tog button[data-fin="Glossy"]'), null);
   await inv.close();
 
   const home = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/`);
@@ -454,6 +454,8 @@ test('invitation lines offer 100 lb or 120 lb card stock at the same pack price'
     preview: document.getElementById('live-paper') && document.getElementById('live-paper').textContent,
     wrapHidden: document.getElementById('live-paper-wrap').hidden
   }));
+  const invFins = await desktop.$$eval('.item .fin option', os => os.map(o => o.value));
+  assert.deepEqual(invFins, ['Matte', 'Satin']);
   assert.equal(line.product, 'invitations');
   assert.equal(line.fin, 'Matte');
   assert.equal(line.paper, 'Card stock 100 lb');
@@ -474,6 +476,18 @@ test('invitation lines offer 100 lb or 120 lb card stock at the same pack price'
   assert.equal(afterPaper.total, '$17.00');
   assert.equal(afterPaper.preview, 'Card stock 120 lb');
   assert.equal(afterPaper.studio, 'true');
+  await desktop.click('#studio-size .finish-tog button[data-fin="Satin"]');
+  await desktop.waitForFunction(() => document.querySelector('.fin') && document.querySelector('.fin').value === 'Satin');
+  const afterFin = await desktop.evaluate(() => ({
+    fin: document.querySelector('.fin').value,
+    total: document.getElementById('total').textContent,
+    options: [...document.querySelector('.fin').options].map(o => o.value),
+    glossyBtn: !!document.querySelector('#studio-size .finish-tog button[data-fin="Glossy"]')
+  }));
+  assert.equal(afterFin.fin, 'Satin');
+  assert.equal(afterFin.total, '$17.00');
+  assert.deepEqual(afterFin.options, ['Matte', 'Satin']);
+  assert.equal(afterFin.glossyBtn, false);
   await desktop.select('.pt', 'photo');
   await desktop.waitForFunction(() => document.querySelector('.pt').value === 'photo');
   assert.equal(await desktop.$('.paper'), null);
@@ -488,7 +502,7 @@ test('invitation lines offer 100 lb or 120 lb card stock at the same pack price'
   const now = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json') && !before.includes(f));
   assert.equal(now.length, 1);
   const order = JSON.parse(fs.readFileSync(path.join(dir, 'orders', now[0]), 'utf8'));
-  assert.equal(order.items[0].finish, 'invitations_matte');
+  assert.equal(order.items[0].finish, 'invitations_satin');
   assert.equal(order.items[0].size, '4x6 (Pack of 25)');
   assert.equal(order.items[0].paper, 'Card stock 120 lb');
   assert.equal(order.items[0].unit, 17);
@@ -502,6 +516,7 @@ test('invitation lines offer 100 lb or 120 lb card stock at the same pack price'
   await menu.waitForSelector('#p-inv:not([hidden])');
   const intro = await menu.$eval('#p-inv .intro', el => el.innerText);
   assert.match(intro, /100 lb or 120 lb card stock/i);
+  assert.match(intro, /Matte or Satin/);
   assert.match(intro, /same price/i);
   await menu.close();
 });

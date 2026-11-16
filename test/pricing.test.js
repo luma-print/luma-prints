@@ -15,6 +15,7 @@ test('photo catalog keeps all 21 sizes and prices', () => {
   assert.equal(Object.keys(PRICES.standard.sizes).length, 21);
   assert.equal(PRICES.glossy.sizes, PRICES.standard.sizes);
   assert.equal(PRICES.satin.sizes, PRICES.standard.sizes);
+  assert.equal(PRICES.invitations_satin.sizes, PRICES.invitations_matte.sizes);
   assert.equal(PRICES.invitations_glossy.sizes, PRICES.invitations_matte.sizes);
 });
 
@@ -90,6 +91,7 @@ test('server pricing ignores client unit and uses the catalog', () => {
 
 test('invitation pack prices stay the same for both card stock weights', () => {
   assert.deepEqual(PRICES.invitations_matte.papers, ['Card stock 100 lb', 'Card stock 120 lb']);
+  assert.equal(PRICES.invitations_satin.papers, PRICES.invitations_matte.papers);
   assert.equal(PRICES.invitations_glossy.papers, PRICES.invitations_matte.papers);
   assert.deepEqual(PRICES.invitations_matte.sizes, {
     '4x6 (Pack of 25)': 17.00,
@@ -103,18 +105,24 @@ test('invitation pack prices stay the same for both card stock weights', () => {
     '4x8 (Pack of 100)': 72.00
   });
   const a = priceOrderItem({ finish: 'invitations_matte', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 100 lb' });
-  const b = priceOrderItem({ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 120 lb', unit: 1 });
+  const b = priceOrderItem({ finish: 'invitations_satin', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 120 lb', unit: 1 });
   assert.equal(a.ok && b.ok, true);
   assert.equal(a.unit, 18);
   assert.equal(b.unit, 18);
   assert.equal(a.lineTotal, 36);
   assert.equal(b.lineTotal, 36);
+  // legacy glossy invitation records still have a catalog price for display
+  const legacy = priceOrderItem({ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 2 });
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.unit, 18);
 });
 
-test('satin is a photo finish only, at the matte price', () => {
+test('invitation finishes are Matte and Satin; glossy invitation stays only for old orders', () => {
   assert.equal(PRICES.satin.label, 'Photo Print (Satin)');
   assert.equal(PRICES.satin.product, 'photo');
-  assert.equal(PRICES.satin.finish, 'Satin');
+  assert.equal(PRICES.invitations_satin.label, 'Invitations & Announcements (Satin)');
+  assert.equal(PRICES.invitations_satin.finish, 'Satin');
   assert.equal(PRICES.invitations_matte.finish, 'Matte');
   assert.equal(PRICES.invitations_glossy.finish, 'Glossy');
+  assert.equal(PRICES.invitations_glossy.label, 'Invitations & Announcements (Glossy)');
 });

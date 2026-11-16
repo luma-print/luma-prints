@@ -7,6 +7,8 @@ var LUMA_PRICES = {
   glossy:   { label: "Photo Print (Glossy)", product: "photo", finish: "Glossy", desc: "Same price as matte — just choose glossy.", sizes: null },
   satin:    { label: "Photo Print (Satin)", product: "photo", finish: "Satin", desc: "Same price as matte — just choose satin.", sizes: null },
   invitations_matte:  { label: "Invitations & Announcements (Matte)", product: "invitations", finish: "Matte", pack: true, papers: LUMA_INVITATION_PAPERS, desc: "Printed in packs on 100 lb or 120 lb card stock, same price. Upload your design (JPG, PNG or PDF).", sizes: { "4x6 (Pack of 25)": 17.00, "5x7 (Pack of 25)": 18.00, "5x7 (Pack of 50)": 36.00, "5x7 (Pack of 75)": 54.00, "5x7 (Pack of 100)": 72.00, "4x8 (Pack of 25)": 18.00, "4x8 (Pack of 50)": 36.00, "4x8 (Pack of 75)": 54.00, "4x8 (Pack of 100)": 72.00 } },
+  invitations_satin:  { label: "Invitations & Announcements (Satin)", product: "invitations", finish: "Satin", pack: true, papers: LUMA_INVITATION_PAPERS, desc: "Same price as matte. Printed on 100 lb or 120 lb card stock, same price.", sizes: null },
+  /* Kept so older orders stored as invitations_glossy still display their finish and pack price. Not offered on new orders. */
   invitations_glossy: { label: "Invitations & Announcements (Glossy)", product: "invitations", finish: "Glossy", pack: true, papers: LUMA_INVITATION_PAPERS, desc: "Same price as matte. Printed on 100 lb or 120 lb card stock, same price.", sizes: null },
   /* Flyer size values stay null on purpose. The site only publishes per-flyer ranges
      (see tiers.unitLow/unitHigh, copied from the existing rate card). exactUnit is null
@@ -32,10 +34,11 @@ var LUMA_PRICES = {
 };
 LUMA_PRICES.glossy.sizes = LUMA_PRICES.standard.sizes; // glossy = matte price
 LUMA_PRICES.satin.sizes = LUMA_PRICES.standard.sizes; // satin = matte price
-LUMA_PRICES.invitations_glossy.sizes = LUMA_PRICES.invitations_matte.sizes;
+LUMA_PRICES.invitations_satin.sizes = LUMA_PRICES.invitations_matte.sizes;
+LUMA_PRICES.invitations_glossy.sizes = LUMA_PRICES.invitations_matte.sizes; // legacy orders only
 var LUMA_PRODUCTS = {
   photo: { label: "Photo Prints", keys: { Matte: "standard", Glossy: "glossy", Satin: "satin" } },
-  invitations: { label: "Invitations & Announcements", keys: { Matte: "invitations_matte", Glossy: "invitations_glossy" }, papers: LUMA_INVITATION_PAPERS },
+  invitations: { label: "Invitations & Announcements", keys: { Matte: "invitations_matte", Satin: "invitations_satin" }, papers: LUMA_INVITATION_PAPERS },
   flyers: { label: "Flyers", keys: { Standard: "flyers" } }
 };
 if (typeof module !== "undefined") module.exports = LUMA_PRICES;
