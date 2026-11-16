@@ -77,6 +77,27 @@ test('glossy uses the same price and shipping stays the flat $5', async () => {
   assert.equal(order.total, 7.07);
 });
 
+
+test('satin uses the same catalog price as matte and appears in emails and Stripe', async () => {
+  const { status, json } = await post([{ finish: 'satin', size: '8x10', qty: 2, unit: 99 }]);
+  assert.equal(status, 200, JSON.stringify(json));
+  const order = saved(idFrom(json));
+  assert.equal(order.items[0].finish, 'satin');
+  assert.equal(order.items[0].unit, 4);
+  assert.equal(order.items[0].lineTotal, 8);
+  assert.equal(order.total, 8);
+  const { stripeLineItems, summary } = require('../server');
+  const li = stripeLineItems(order.items, 0);
+  assert.equal(li[0].price_data.unit_amount, 400);
+  assert.equal(li[0].price_data.product_data.name, '8x10 – Photo Print (Satin)');
+  assert.match(summary(order), /2 x 8x10 – Photo Print \(Satin\) .* \$8\.00/);
+  const adminHeaders = { authorization: 'Basic ' + Buffer.from('admin:test-only-admin').toString('base64') };
+  const admin = await (await fetch(base + '/admin', { headers: adminHeaders })).text();
+  assert.match(admin, /satin/);
+  const bad = await post([{ finish: 'unknown', size: '4x6', qty: 1 }]);
+  assert.equal(bad.status, 400);
+});
+
 test('invalid size, quantity, and flyer minimum are rejected', async () => {
   const badSize = await post([{ finish: 'standard', size: '2x3', qty: 1, unit: 0.01 }]);
   assert.equal(badSize.status, 400);
@@ -281,6 +302,58 @@ test('cleanup removes only old uploads that never made it into an order', async 
   assert.equal(fs.existsSync(path.join(dir, 'uploads', used.json.id)), true);
   assert.equal(fs.existsSync(path.join(dir, 'uploads', old.json.id)), false);
   assert.equal(fs.existsSync(path.join(dir, 'uploads', fresh.json.id)), true);
+});
+
+
+test('invitation paper is stored, priced the same, rejected if unknown, and ignored on photos and flyers', async () => {
+  const a = await post([{ finish: 'invitations_matte', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 100 lb', unit: 1 }]);
+  assert.equal(a.status, 200, JSON.stringify(a.json));
+  const oa = saved(idFrom(a.json));
+  assert.equal(oa.items[0].paper, 'Card stock 100 lb');
+  assert.equal(oa.items[0].unit, 18);
+  assert.equal(oa.items[0].lineTotal, 36);
+  assert.equal(oa.total, 36);
+  assert.match(oa.files[0].attachmentName, /Card stock 100 lb/);
+
+  const b = await post([{ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 120 lb' }]);
+  assert.equal(b.status, 200, JSON.stringify(b.json));
+  const ob = saved(idFrom(b.json));
+  assert.equal(ob.items[0].paper, 'Card stock 120 lb');
+  assert.equal(ob.items[0].finish, 'invitations_glossy');
+  assert.equal(ob.items[0].unit, 18);
+  assert.equal(ob.items[0].lineTotal, 36);
+  assert.equal(ob.total, 36);
+
+  const omitted = await post([{ finish: 'invitations_matte', size: '4x6 (Pack of 25)', qty: 1 }]);
+  assert.equal(omitted.status, 200);
+  const oo = saved(idFrom(omitted.json));
+  assert.equal(oo.items[0].paper, 'Card stock 100 lb');
+  assert.equal(oo.items[0].unit, 17);
+
+  const bad = await post([{ finish: 'invitations_matte', size: '5x7 (Pack of 25)', qty: 1, paper: '80 lb' }]);
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.error, /Invalid paper/);
+
+  const photo = await post([{ finish: 'standard', size: '4x6', qty: 1, paper: 'Card stock 120 lb' }]);
+  assert.equal(photo.status, 200);
+  assert.equal(saved(idFrom(photo.json)).items[0].paper, undefined);
+
+  const flyer = await post([{ finish: 'flyers', size: 'Small batch', qty: 25, paper: 'nope' }]);
+  assert.equal(flyer.status, 200);
+  assert.equal(saved(idFrom(flyer.json)).items[0].paper, undefined);
+
+  const { stripeLineItems, summary } = require('../server');
+  const li = stripeLineItems(ob.items, 0);
+  assert.equal(li[0].price_data.unit_amount, 1800);
+  assert.equal(li[0].price_data.product_data.name, '5x7 (Pack of 25) – Invitations & Announcements (Glossy) – Card stock 120 lb');
+  const text = summary(oa);
+  assert.match(text, /2 x 5x7 \(Pack of 25\) – Invitations & Announcements \(Matte\) – Card stock 100 lb .* \$36\.00/);
+  assert.match(summary(ob), /Card stock 120 lb/);
+
+  const adminHeaders = { authorization: 'Basic ' + Buffer.from('admin:test-only-admin').toString('base64') };
+  const admin = await (await fetch(base + '/admin', { headers: adminHeaders })).text();
+  assert.match(admin, /Card stock 100 lb/);
+  assert.match(admin, /Card stock 120 lb/);
 });
 
 // ---- files are held until the email bot confirms they were received ----

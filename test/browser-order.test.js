@@ -380,6 +380,132 @@ test('one photo can be ordered in two sizes with Add another size, uploaded once
   }
 });
 
+
+
+test('photo finish choices include Satin at the same price; invitations do not', { timeout: 120000 }, async () => {
+  const before = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json'));
+  const page = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=photo&size=4x6`);
+  await page.waitForSelector('#studio-size .finish-tog button[data-fin="Satin"]');
+  const fins = await page.$$eval('#studio-size .finish-tog button[data-fin]', bs => bs.map(b => [b.dataset.fin, b.getAttribute('aria-pressed')]));
+  assert.deepEqual(fins, [['Matte', 'true'], ['Glossy', 'false'], ['Satin', 'false']]);
+  await (await page.$('#files')).uploadFile(pngPath);
+  await page.waitForSelector('.item .fin');
+  const options = await page.$$eval('.item .fin option', os => os.map(o => o.value));
+  assert.deepEqual(options, ['Matte', 'Glossy', 'Satin']);
+  assert.equal(await page.$eval('#total', el => el.textContent), '$0.69');
+  await page.click('#studio-size .finish-tog button[data-fin="Satin"]');
+  await page.waitForFunction(() => document.querySelector('.fin') && document.querySelector('.fin').value === 'Satin');
+  const after = await page.evaluate(() => ({
+    fin: document.querySelector('.fin').value,
+    total: document.getElementById('total').textContent,
+    satin: document.getElementById('live-frame').classList.contains('satin'),
+    glossy: document.getElementById('live-frame').classList.contains('glossy'),
+    label: document.getElementById('live-fin').textContent
+  }));
+  assert.equal(after.fin, 'Satin');
+  assert.equal(after.total, '$0.69');
+  assert.equal(after.satin, true);
+  assert.equal(after.glossy, false);
+  assert.equal(after.label, 'Satin');
+  await page.type('input[name=name]', 'QA Satin');
+  await page.type('input[name=email]', 'qa-satin@example.com');
+  await page.click('#pay');
+  await page.waitForFunction(() => location.pathname.endsWith('/success.html'), { timeout: 15000 });
+  const now = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json') && !before.includes(f));
+  const order = JSON.parse(fs.readFileSync(path.join(dir, 'orders', now[0]), 'utf8'));
+  assert.equal(order.items[0].finish, 'satin');
+  assert.equal(order.items[0].unit, 0.69);
+  assert.equal(order.items[0].lineTotal, 0.69);
+  await page.close();
+
+  const inv = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=invitations`);
+  await inv.waitForSelector('#studio-size .finish-tog button[data-fin="Matte"]');
+  const invFins = await inv.$$eval('#studio-size .finish-tog button[data-fin]', bs => bs.map(b => b.dataset.fin));
+  assert.deepEqual(invFins, ['Matte', 'Glossy']);
+  assert.equal(await inv.$('#studio-size .finish-tog button[data-fin="Satin"]'), null);
+  await inv.close();
+
+  const home = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/`);
+  await home.waitForSelector('.finish-tog button[data-fin="Satin"]');
+  const homeFins = await home.$$eval('.finish-tog button[data-fin]', bs => bs.map(b => b.dataset.fin));
+  assert.deepEqual(homeFins, ['Matte', 'Glossy', 'Satin']);
+  const photoIntro = await home.$eval('#p-photo .intro', el => el.innerText);
+  assert.match(photoIntro, /Matte, Glossy and Satin are the same price/);
+  await home.close();
+});
+
+test('invitation lines offer 100 lb or 120 lb card stock at the same pack price', { timeout: 120000 }, async () => {
+  const before = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json'));
+  const desktop = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/order.html?type=invitations`);
+  await desktop.waitForSelector('#studio-size button[data-paper="Card stock 100 lb"]');
+  const pending = await desktop.evaluate(() => ({
+    papers: [...document.querySelectorAll('#studio-size button[data-paper]')].map(b => [b.dataset.paper, b.getAttribute('aria-pressed')])
+  }));
+  assert.deepEqual(pending.papers, [['Card stock 100 lb', 'true'], ['Card stock 120 lb', 'false']]);
+  await (await desktop.$('#files')).uploadFile(pngPath);
+  await desktop.waitForSelector('.item .paper');
+  const line = await desktop.evaluate(() => ({
+    product: document.querySelector('.pt').value,
+    fin: document.querySelector('.fin').value,
+    paper: document.querySelector('.paper').value,
+    options: [...document.querySelector('.paper').options].map(o => o.value),
+    size: document.querySelector('.item button[aria-checked="true"]').dataset.size,
+    total: document.getElementById('total').textContent,
+    preview: document.getElementById('live-paper') && document.getElementById('live-paper').textContent,
+    wrapHidden: document.getElementById('live-paper-wrap').hidden
+  }));
+  assert.equal(line.product, 'invitations');
+  assert.equal(line.fin, 'Matte');
+  assert.equal(line.paper, 'Card stock 100 lb');
+  assert.deepEqual(line.options, ['Card stock 100 lb', 'Card stock 120 lb']);
+  assert.equal(line.size, '4x6 (Pack of 25)');
+  assert.equal(line.total, '$17.00');
+  assert.equal(line.preview, 'Card stock 100 lb');
+  assert.equal(line.wrapHidden, false);
+  await desktop.select('.paper', 'Card stock 120 lb');
+  await desktop.waitForFunction(() => document.querySelector('.paper') && document.querySelector('.paper').value === 'Card stock 120 lb');
+  const afterPaper = await desktop.evaluate(() => ({
+    paper: document.querySelector('.paper').value,
+    total: document.getElementById('total').textContent,
+    preview: document.getElementById('live-paper').textContent,
+    studio: document.querySelector('#studio-size button[data-paper="Card stock 120 lb"]').getAttribute('aria-pressed')
+  }));
+  assert.equal(afterPaper.paper, 'Card stock 120 lb');
+  assert.equal(afterPaper.total, '$17.00');
+  assert.equal(afterPaper.preview, 'Card stock 120 lb');
+  assert.equal(afterPaper.studio, 'true');
+  await desktop.select('.pt', 'photo');
+  await desktop.waitForFunction(() => document.querySelector('.pt').value === 'photo');
+  assert.equal(await desktop.$('.paper'), null);
+  assert.equal(await desktop.$eval('#live-paper-wrap', el => el.hidden), true);
+  await desktop.select('.pt', 'invitations');
+  await desktop.waitForSelector('.item .paper');
+  assert.equal(await desktop.$eval('.paper', el => el.value), 'Card stock 120 lb');
+  await desktop.type('input[name=name]', 'QA Invite Paper');
+  await desktop.type('input[name=email]', 'qa-invite-paper@example.com');
+  await desktop.click('#pay');
+  await desktop.waitForFunction(() => location.pathname.endsWith('/success.html'), { timeout: 15000 });
+  const now = fs.readdirSync(path.join(dir, 'orders')).filter(f => f.endsWith('.json') && !before.includes(f));
+  assert.equal(now.length, 1);
+  const order = JSON.parse(fs.readFileSync(path.join(dir, 'orders', now[0]), 'utf8'));
+  assert.equal(order.items[0].finish, 'invitations_matte');
+  assert.equal(order.items[0].size, '4x6 (Pack of 25)');
+  assert.equal(order.items[0].paper, 'Card stock 120 lb');
+  assert.equal(order.items[0].unit, 17);
+  assert.equal(order.items[0].lineTotal, 17);
+  assert.equal(order.total, 17);
+  await desktop.close();
+
+  const menu = await pageAt(1280, 900, `http://127.0.0.1:${PORT}/`);
+  await menu.waitForSelector('#menu button[data-t="p-inv"]');
+  await menu.click('#menu button[data-t="p-inv"]');
+  await menu.waitForSelector('#p-inv:not([hidden])');
+  const intro = await menu.$eval('#p-inv .intro', el => el.innerText);
+  assert.match(intro, /100 lb or 120 lb card stock/i);
+  assert.match(intro, /same price/i);
+  await menu.close();
+});
+
 test('a 150-photo order uploads in small requests and is saved in full', { timeout: 180000 }, async () => {
   const bulk = path.join(dir, 'bulk');
   fs.mkdirSync(bulk, { recursive: true });

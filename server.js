@@ -52,7 +52,21 @@ if (process.env.SMTP_HOST) {
 }
 const FROM = () => `"Luma Prints" <${process.env.SMTP_FROM || process.env.SMTP_USER || OWNER_EMAIL}>`;
 const money = v => '$' + v.toFixed(2);
-const itemLine = i => `${i.photo ? 'Photo ' + i.photo + ': ' : ''}${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish} – ${i.originalName} – ${i.priceTBD ? 'price TBD' + (i.unitText ? ' (' + i.unitText + (i.totalText ? '; published total ' + i.totalText : '') + ')' : '') : money(i.lineTotal)}`;
+const papersFor = finish => {
+  const spec = PRICES[finish];
+  return (spec && spec.product === 'invitations' && Array.isArray(spec.papers) && spec.papers.length) ? spec.papers : null;
+};
+function applyPaper(src, finish) {
+  const papers = papersFor(finish);
+  if (!papers) return undefined;
+  const raw = src && src.paper;
+  if (raw == null || String(raw).trim() === '') return papers[0];
+  const paper = String(raw);
+  if (!papers.includes(paper)) throw new Error('Invalid paper');
+  return paper;
+}
+const lineTag = i => `${i.qty}x_${i.size}_${i.finish}${i.paper ? '_' + i.paper : ''}`;
+const itemLine = i => `${i.photo ? 'Photo ' + i.photo + ': ' : ''}${i.qty} x ${i.size} – ${(PRICES[i.finish] || {}).label || i.finish}${i.paper ? ' – ' + i.paper : ''} – ${i.originalName} – ${i.priceTBD ? 'price TBD' + (i.unitText ? ' (' + i.unitText + (i.totalText ? '; published total ' + i.totalText : '') + ')' : '') : money(i.lineTotal)}`;
 const summary = o => `Order: ${o.id}\nCustomer: ${o.customer.name}\nEmail: ${o.customer.email}\nPhone: ${o.customer.phone || '-'}\n` +
   `Delivery: ${o.delivery === 'shipping' ? 'SHIPPING to:\n' + o.address : 'PICKUP'}\n${o.notes ? 'Notes: ' + o.notes + '\n' : ''}\nItems:\n` +
   o.items.map(itemLine).join('\n') + `\n\nSubtotal: ${money(o.subtotal)}\nShipping: ${money(o.shipping)}\nTotal: ${money(o.total)}${o.items.some(i => i.priceTBD) ? ' (quote items are not included in this dollar total)' : ''}\nPayment: ${o.payment}`;
@@ -79,7 +93,7 @@ async function notify(order, why) {
   // one attachment per uploaded file, even when that photo is ordered in several sizes
   for (const g of photoGroups(order.items)) {
     const p = path.join(UPLOADS, g.file), size = fs.statSync(p).size;
-    const sizes = g.lines.map(i => `${i.qty}x_${i.size}_${i.finish}`).join('+');
+    const sizes = g.lines.map(lineTag).join('+');
     if (used + size <= MAX_ATTACH) { used += size; attachments.push({ filename: `${sizes}_${g.originalName}`, path: p }); }
     else links.push(`${g.photo ? 'Photo ' + g.photo + ' ' : ''}${g.originalName}: ${FILES_CONFIRM_TOKEN ? fileLink(order.id, g.file) : BASE_URL + '/admin/file/' + g.file}`);
   }
@@ -109,7 +123,7 @@ async function buildManifest(lines) {
     try { meta = JSON.parse(fs.readFileSync(metaPath(g.file), 'utf8')); } catch { /* old one-request upload */ }
     const bytes = fs.statSync(p).size;
     const sha256 = meta && meta.sha256 && meta.size === bytes ? meta.sha256 : await sha256File(p);
-    out.push({ file: g.file, originalName: g.originalName, attachmentName: `${g.lines.map(i => `${i.qty}x_${i.size}_${i.finish}`).join('+')}_${g.originalName}`, photo: g.photo || 0, bytes, sha256 });
+    out.push({ file: g.file, originalName: g.originalName, attachmentName: `${g.lines.map(lineTag).join('+')}_${g.originalName}`, photo: g.photo || 0, bytes, sha256 });
   }
   return out;
 }
@@ -187,13 +201,15 @@ function buildLines(files, items) {
     const f = files[refs[i]];
     const priced = priceOrderItem({ finish: (src || {}).finish, size: (src || {}).size, qty: (src || {}).qty });
     if (!priced.ok) throw new Error(priced.error);
+    const paper = applyPaper(src, priced.finish);
     const line = { file: f.filename, originalName: f.originalname, finish: priced.finish, size: priced.size, qty: priced.qty, unit: priced.unit, lineTotal: priced.lineTotal, priceTBD: priced.priceTBD, quoteGap: !!priced.gap, unitText: priced.unitText || '', totalText: priced.totalText || '' };
+    if (paper) line.paper = paper;
     if (multi) { line.photo = refs[i] + 1; line.fileIndex = refs[i]; }
     return line;
   });
 }
 function stripeLineItems(lines, shipping) {
-  const items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} – ${PRICES[l.finish].label}${l.photo ? ' (Photo ' + l.photo + ')' : ''}` } } }));
+  const items = lines.map(l => ({ quantity: l.qty, price_data: { currency: 'usd', unit_amount: Math.round(l.unit * 100), product_data: { name: `${l.size} – ${PRICES[l.finish].label}${l.paper ? ' – ' + l.paper : ''}${l.photo ? ' (Photo ' + l.photo + ')' : ''}` } } }));
   if (shipping) items.push({ quantity: 1, price_data: { currency: 'usd', unit_amount: Math.round(shipping * 100), product_data: { name: 'Shipping' } } });
   return items;
 }
@@ -464,7 +480,7 @@ app.get('/admin', auth, (req, res) => {
    <span class="pill ${o.filesDeleted ? 'ok' : 'warn'}">${o.filesDeleted ? 'Received &amp; deleted ' + esc(new Date(o.filesReceivedAt).toLocaleString()) : 'Files held'}</span></div>
    <p>${esc(o.customer.name)} · <a href="mailto:${esc(o.customer.email)}">${esc(o.customer.email)}</a> · ${esc(o.customer.phone)}<br>
    <b>${o.delivery === 'shipping' ? 'Ship to:' : 'Pickup'}</b> ${esc(o.address)} ${o.notes ? '<br><i>Notes: ' + esc(o.notes) + '</i>' : ''}</p>
-   <ul>${o.items.map(i => `<li>${i.photo ? '<b>Photo ' + esc(i.photo) + '</b> · ' : ''}${i.qty} × ${i.size} <i>${esc(i.finish)}</i> — ${o.filesDeleted ? esc(i.originalName) + ' <span class="mute">(file deleted after confirmed received)</span>' : `<a href="/admin/file/${esc(i.file)}" download="${esc(i.originalName)}">${esc(i.originalName)}</a>`} (${i.priceTBD ? '[price TBD]' : '$' + i.lineTotal.toFixed(2)})</li>`).join('')}</ul>
+   <ul>${o.items.map(i => `<li>${i.photo ? '<b>Photo ' + esc(i.photo) + '</b> · ' : ''}${i.qty} × ${i.size} <i>${esc(i.finish)}</i>${i.paper ? ' · ' + esc(i.paper) : ''} — ${o.filesDeleted ? esc(i.originalName) + ' <span class="mute">(file deleted after confirmed received)</span>' : `<a href="/admin/file/${esc(i.file)}" download="${esc(i.originalName)}">${esc(i.originalName)}</a>`} (${i.priceTBD ? '[price TBD]' : '$' + i.lineTotal.toFixed(2)})</li>`).join('')}</ul>
    ${!o.filesDeleted && (o.files || []).length ? `<form method="post" action="/admin/orders/${esc(o.id)}/confirm-received" onsubmit="return confirm('Delete this order\'s ${o.files.length} file(s) from the website? Only do this after they were received.')"><button>Confirm files received &amp; delete from website</button></form>` : ''}
    <p>Total: <b>$${o.total.toFixed(2)}</b></p>
    <form method="post" action="/admin/orders/${esc(o.id)}/status"><select name="status">${['new', 'printing', 'ready', 'shipped', 'completed'].map(s => `<option ${s === o.status ? 'selected' : ''}>${s}</option>`).join('')}</select>
