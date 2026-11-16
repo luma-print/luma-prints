@@ -56,6 +56,13 @@ const papersFor = finish => {
   const spec = PRICES[finish];
   return (spec && spec.product === 'invitations' && Array.isArray(spec.papers) && spec.papers.length) ? spec.papers : null;
 };
+const INVITATION_ORDER_FINISHES = new Set(['invitations_matte', 'invitations_satin']);
+function assertInvitationFinish(priced) {
+  const spec = PRICES[priced.finish];
+  if (spec && spec.product === 'invitations' && !INVITATION_ORDER_FINISHES.has(priced.finish)) {
+    throw new Error('Invitations are available in Matte or Satin only.');
+  }
+}
 function applyPaper(src, finish) {
   const papers = papersFor(finish);
   if (!papers) return undefined;
@@ -201,6 +208,7 @@ function buildLines(files, items) {
     const f = files[refs[i]];
     const priced = priceOrderItem({ finish: (src || {}).finish, size: (src || {}).size, qty: (src || {}).qty });
     if (!priced.ok) throw new Error(priced.error);
+    assertInvitationFinish(priced);
     const paper = applyPaper(src, priced.finish);
     const line = { file: f.filename, originalName: f.originalname, finish: priced.finish, size: priced.size, qty: priced.qty, unit: priced.unit, lineTotal: priced.lineTotal, priceTBD: priced.priceTBD, quoteGap: !!priced.gap, unitText: priced.unitText || '', totalText: priced.totalText || '' };
     if (paper) line.paper = paper;

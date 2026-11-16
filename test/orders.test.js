@@ -315,14 +315,18 @@ test('invitation paper is stored, priced the same, rejected if unknown, and igno
   assert.equal(oa.total, 36);
   assert.match(oa.files[0].attachmentName, /Card stock 100 lb/);
 
-  const b = await post([{ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 120 lb' }]);
+  const b = await post([{ finish: 'invitations_satin', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 120 lb' }]);
   assert.equal(b.status, 200, JSON.stringify(b.json));
   const ob = saved(idFrom(b.json));
   assert.equal(ob.items[0].paper, 'Card stock 120 lb');
-  assert.equal(ob.items[0].finish, 'invitations_glossy');
+  assert.equal(ob.items[0].finish, 'invitations_satin');
   assert.equal(ob.items[0].unit, 18);
   assert.equal(ob.items[0].lineTotal, 36);
   assert.equal(ob.total, 36);
+
+  const retired = await post([{ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 1, paper: 'Card stock 100 lb' }]);
+  assert.equal(retired.status, 400);
+  assert.match(retired.json.error, /Matte or Satin only/i);
 
   const omitted = await post([{ finish: 'invitations_matte', size: '4x6 (Pack of 25)', qty: 1 }]);
   assert.equal(omitted.status, 200);
@@ -345,15 +349,26 @@ test('invitation paper is stored, priced the same, rejected if unknown, and igno
   const { stripeLineItems, summary } = require('../server');
   const li = stripeLineItems(ob.items, 0);
   assert.equal(li[0].price_data.unit_amount, 1800);
-  assert.equal(li[0].price_data.product_data.name, '5x7 (Pack of 25) – Invitations & Announcements (Glossy) – Card stock 120 lb');
+  assert.equal(li[0].price_data.product_data.name, '5x7 (Pack of 25) – Invitations & Announcements (Satin) – Card stock 120 lb');
   const text = summary(oa);
   assert.match(text, /2 x 5x7 \(Pack of 25\) – Invitations & Announcements \(Matte\) – Card stock 100 lb .* \$36\.00/);
-  assert.match(summary(ob), /Card stock 120 lb/);
+  assert.match(summary(ob), /Invitations & Announcements \(Satin\) – Card stock 120 lb/);
+
+  const legacy = {
+    id: 'LEGACY-GLOSSY',
+    customer: { name: 'Old Order', email: 'old@example.com', phone: '' },
+    delivery: 'pickup', address: '', notes: '',
+    items: [{ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 1, paper: 'Card stock 100 lb', originalName: 'old.png', lineTotal: 18, priceTBD: false }],
+    subtotal: 18, shipping: 0, total: 18, payment: 'paid'
+  };
+  assert.match(summary(legacy), /Invitations & Announcements \(Glossy\) – Card stock 100 lb .* \$18\.00/);
+  assert.equal(stripeLineItems(legacy.items, 0)[0].price_data.product_data.name, '5x7 (Pack of 25) – Invitations & Announcements (Glossy) – Card stock 100 lb');
 
   const adminHeaders = { authorization: 'Basic ' + Buffer.from('admin:test-only-admin').toString('base64') };
   const admin = await (await fetch(base + '/admin', { headers: adminHeaders })).text();
   assert.match(admin, /Card stock 100 lb/);
   assert.match(admin, /Card stock 120 lb/);
+  assert.match(admin, /invitations_satin/);
 });
 
 // ---- files are held until the email bot confirms they were received ----

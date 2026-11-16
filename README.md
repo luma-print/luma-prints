@@ -5,7 +5,7 @@ Two versions are included:
 - **Static site (`static-site/`)** – pure HTML/CSS (+ a little JS for the price list), publish free on Netlify; forms handled by Netlify Forms.
 
 ## Prices – edit in ONE place
-`public/prices.js` (copy it to `static-site/prices.js` too if you use the static version). Standard prints have all 21 sizes; glossy and satin = same price as standard (free finish option: Matte, Glossy, or Satin). Invitations are printed on 100 lb or 120 lb card stock at the same pack price. Canvas is not offered. (If you ever set a price to `null` it shows as [SET PRICE] and orders for it become price-to-be-confirmed inquiries.)
+`public/prices.js` (copy it to `static-site/prices.js` too if you use the static version). Standard prints have all 21 sizes; glossy and satin = same price as standard (free finish option: Matte, Glossy, or Satin). Invitations are printed on 100 lb or 120 lb card stock at the same pack price, in Matte or Satin. Canvas is not offered. (If you ever set a price to `null` it shows as [SET PRICE] and orders for it become price-to-be-confirmed inquiries.)
 
 ## Placeholders to replace (search for `[ADD` and `[OWNER`)
 `[ADD BUSINESS ADDRESS]`, `[ADD PHONE]`, `[ADD EMAIL]`, `[ADD HOURS]` (footer + contact page), About Us text, gallery images in `public/img/` (currently free placeholder photos from picsum.photos — replace with your own work).
