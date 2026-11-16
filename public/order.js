@@ -13,6 +13,9 @@ const keyOf = it => PR[it.type].keys[it.fin];
 const pretty = s => String(s || '').replace(/(\d+)x(\d+)/g, '$1×$2');
 const fmt = (k, s) => { const v = P[k].sizes[s]; if (v != null) return '$' + v.toFixed(2); return (P[k].displayRates && P[k].displayRates[s]) || 'Quote'; };
 const finsOf = t => Object.keys(PR[t].keys);
+const papersOf = t => (PR[t] && PR[t].papers) || [];
+const defaultPaper = t => papersOf(t)[0] || '';
+const paperOf = it => { const papers = papersOf(it.type); return papers.includes(it.paper) ? it.paper : defaultPaper(it.type); };
 function defaultFin(t) {
   const fins = finsOf(t);
   if (fins.includes(urlFinish)) return urlFinish;
@@ -27,7 +30,7 @@ function defaultSize(t, fin) {
   if (t === 'photo' && sizes.includes('4x6')) return '4x6';
   return sizes[0];
 }
-const pending = { fin: defaultFin(defType), size: defaultSize(defType, defaultFin(defType)), qty: defType === 'flyers' ? P.flyers.minQty : 1 };
+const pending = { fin: defaultFin(defType), size: defaultSize(defType, defaultFin(defType)), qty: defType === 'flyers' ? P.flyers.minQty : 1, paper: defaultPaper(defType) };
 let studioMode = '';
 
 const pp = $('#prodpick');
@@ -37,6 +40,7 @@ function renderPick() {
     defType = b.dataset.t;
     pending.fin = defaultFin(defType);
     pending.size = defaultSize(defType, pending.fin);
+    pending.paper = defaultPaper(defType);
     if (defType === 'flyers' && !(pending.qty >= P.flyers.minQty)) pending.qty = P.flyers.minQty;
     if (defType !== 'flyers') pending.qty = 1;
     renderPick();
@@ -62,10 +66,13 @@ if (location.search.includes('canceled')) $('#cancel').hidden = false;
 function applyProduct(it, t) {
   it.qtyByType = it.qtyByType || {};
   it.finByType = it.finByType || {};
-  if (it.type) { it.qtyByType[it.type] = it.qty; it.finByType[it.type] = it.fin; }
+  it.paperByType = it.paperByType || {};
+  if (it.type) { it.qtyByType[it.type] = it.qty; it.finByType[it.type] = it.fin; if (it.paper) it.paperByType[it.type] = it.paper; }
   it.type = t;
   const fins = finsOf(t);
   it.fin = fins.includes(it.finByType[t]) ? it.finByType[t] : (fins.includes(it.fin) ? it.fin : fins[0]);
+  const papers = papersOf(t);
+  it.paper = papers.includes(it.paperByType[t]) ? it.paperByType[t] : (papers.includes(it.paper) ? it.paper : defaultPaper(t));
   const remembered = it.qtyByType[t];
   if (t === 'flyers') {
     const q = Number.isInteger(remembered) ? remembered : it.qty;
@@ -95,7 +102,7 @@ function nextFreeSize(it) {
 function addSizeLine(i) {
   const base = list[i];
   if (!base || base.type === 'flyers') return;
-  const copy = { file: base.file, src: base.src, url: base.url, pdf: base.pdf, type: base.type, fin: base.fin, size: base.size, qty: 1, qtyByType: {}, finByType: {} };
+  const copy = { file: base.file, src: base.src, url: base.url, pdf: base.pdf, type: base.type, fin: base.fin, paper: base.paper, size: base.size, qty: 1, qtyByType: {}, finByType: {}, paperByType: {} };
   copy.size = nextFreeSize(base);
   const group = linesOf(base.src);
   const at = list.indexOf(group[group.length - 1]) + 1;
@@ -143,7 +150,7 @@ async function uploadAll(srcs) {
 }
 const add = files => {
   [...files].filter(f => f.type.startsWith('image/') || f.type === 'application/pdf').forEach(f => {
-    const it = { file: f, src: nextSrc++, type: '', qty: pending.qty, fin: pending.fin, size: pending.size, qtyByType: {}, finByType: {}, pdf: f.type === 'application/pdf' };
+    const it = { file: f, src: nextSrc++, type: '', qty: pending.qty, fin: pending.fin, paper: pending.paper, size: pending.size, qtyByType: {}, finByType: {}, paperByType: {}, pdf: f.type === 'application/pdf' };
     it.url = it.pdf ? PDF_SVG : URL.createObjectURL(f);
     applyProduct(it, defType);
     if (defType !== 'flyers') {
@@ -151,6 +158,8 @@ const add = files => {
       if (sizes.includes(pending.size)) it.size = pending.size;
       it.fin = finsOf(defType).includes(pending.fin) ? pending.fin : it.fin;
     }
+    const papers = papersOf(defType);
+    if (papers.includes(pending.paper)) it.paper = pending.paper;
     list.push(it);
     sel = list.length - 1;
   });
@@ -168,8 +177,8 @@ const payMethod = () => ($('[name=payMethod]:checked') || {}).value || 'venmo';
 const active = () => list[sel] || null;
 function ctx() {
   const it = active();
-  if (it) return { type: it.type, fin: it.fin, size: it.size, qty: it.qty, item: it };
-  return { type: defType, fin: pending.fin, size: pending.size, qty: pending.qty, item: null };
+  if (it) return { type: it.type, fin: it.fin, paper: paperOf(it), size: it.size, qty: it.qty, item: it };
+  return { type: defType, fin: pending.fin, paper: papersOf(defType).includes(pending.paper) ? pending.paper : defaultPaper(defType), size: pending.size, qty: pending.qty, item: null };
 }
 function setCtxSize(size) {
   const it = active();
@@ -189,6 +198,15 @@ function setCtxFin(fin) {
     pending.fin = fin;
     if (defType !== 'flyers' && !sizesOf(defType, fin).includes(pending.size)) pending.size = defaultSize(defType, fin);
   }
+  render();
+}
+function setCtxPaper(paper) {
+  const it = active();
+  if (it) {
+    if (!papersOf(it.type).includes(paper)) return;
+    it.paper = paper;
+  } else if (!papersOf(defType).includes(paper)) return;
+  pending.paper = paper;
   render();
 }
 
@@ -223,14 +241,17 @@ function renderStudio(force) {
   const c = ctx();
   const host = $('#studio-size');
   if (!host) return;
-  const mode = c.type + ':' + (c.item ? 'item' + sel : 'pending') + ':' + c.fin;
+  const mode = c.type + ':' + (c.item ? 'item' + sel : 'pending') + ':' + c.fin + ':' + (c.paper || '');
   if (force || studioMode !== mode) {
     studioMode = mode;
     const fins = finsOf(c.type);
+    const papers = papersOf(c.type);
     const finTog = fins.length > 1 ? `<div class="finish-tog" role="group" aria-label="Finish">${fins.map(f => `<button type="button" data-fin="${esc(f)}" aria-pressed="${f === c.fin}">${esc(f)}</button>`).join('')}</div>` : '';
-    if (c.type === 'flyers') host.innerHTML = finTog + flyerCard(c.qty, !c.item);
-    else host.innerHTML = finTog + sizeButtons(c.type, c.fin, c.size);
-    host.querySelectorAll('.finish-tog button').forEach(b => b.onclick = () => setCtxFin(b.dataset.fin));
+    const paperTog = papers.length ? `<p class="opt-label">Paper</p><div class="finish-tog paper-tog" role="group" aria-label="Paper">${papers.map(pv => `<button type="button" data-paper="${esc(pv)}" aria-pressed="${pv === c.paper}">${esc(pv)}</button>`).join('')}</div>` : '';
+    if (c.type === 'flyers') host.innerHTML = finTog + paperTog + flyerCard(c.qty, !c.item);
+    else host.innerHTML = finTog + paperTog + sizeButtons(c.type, c.fin, c.size);
+    host.querySelectorAll('.finish-tog button[data-fin]').forEach(b => b.onclick = () => setCtxFin(b.dataset.fin));
+    host.querySelectorAll('.finish-tog button[data-paper]').forEach(b => b.onclick = () => setCtxPaper(b.dataset.paper));
     bindSizeGroup(host, setCtxSize);
     const pq = $('#pending-flyer-qty');
     if (pq) pq.oninput = () => { pending.qty = parseInt(pq.value, 10); refreshFlyerCopy(pending.qty); updatePreview(); };
@@ -293,6 +314,7 @@ function render() {
   list.forEach((it, i) => {
     const packs = it.type !== 'flyers' && !!P[keyOf(it)].pack;
     const fins = finsOf(it.type);
+    const papers = papersOf(it.type);
     const min = it.type === 'flyers' ? P.flyers.minQty : 1;
     const max = it.type === 'flyers' ? P.flyers.maxQty : 999;
     const el = document.createElement('div');
@@ -301,9 +323,10 @@ function render() {
     const photoNo = uniqueSources().findIndex(o => o.src === it.src) + 1;
     el.className = 'item' + (i === sel ? ' active' : '') + (pos > 0 ? ' same-photo' : '');
     el.dataset.photo = photoNo;
-    el.innerHTML = `<img class="th" src="${it.url}" alt="" loading="lazy" decoding="async"><div class="item-main"><div class="nm"></div><div class="ctl">
+    el.innerHTML = `<img class="th" src="${it.url}" alt="" loading="lazy" decoding="async"><div class="item-main"><div class="nm"></div><div class="ctl${papers.length ? ' has-paper' : ''}">
 <div><label>Product</label><select class="pt">${Object.entries(PR).map(([t, v]) => `<option value="${t}" ${t === it.type ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></div>
 <div><label>Finish</label><select class="fin" ${fins.length < 2 ? 'disabled' : ''}>${fins.map(f => `<option ${f === it.fin ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
+${papers.length ? `<div><label>Paper</label><select class="paper">${papers.map(pv => `<option ${pv === paperOf(it) ? 'selected' : ''}>${esc(pv)}</option>`).join('')}</select></div>` : ''}
 <div><label>${it.type === 'flyers' ? 'Flyers' : packs ? 'Packs' : 'Qty'}</label><input class="qty" type="number" inputmode="numeric" min="${min}" max="${max}" step="1" value="${Number.isInteger(it.qty) ? it.qty : ''}" aria-label="${it.type === 'flyers' ? 'Flyer quantity, minimum ' + min : 'Quantity'}"></div>
 </div><div class="size-block">${it.type === 'flyers' ? flyerCard(it.qty, false).replace(' id="flyer-quote"', '') : sizeButtons(it.type, it.fin, it.size)}</div><p class="line-note"></p><p class="field-error" hidden></p>${it.type === 'flyers' ? '' : `<button type="button" class="add-size" aria-label="Add another size of this photo"><span aria-hidden="true">＋</span> Add another size</button>`}</div>
 <div class="side"><b class="lt"></b><button type="button" class="rm" aria-label="Remove">✕</button></div>`;
@@ -318,6 +341,8 @@ function render() {
     if (addBtn) addBtn.onclick = () => addSizeLine(i);
     el.querySelector('.pt').onchange = e => { applyProduct(it, e.target.value); sel = i; studioMode = ''; render(); };
     el.querySelector('.fin').onchange = e => { it.fin = e.target.value; if (it.type !== 'flyers' && !sizesOf(it.type, it.fin).includes(it.size)) it.size = defaultSize(it.type, it.fin); sel = i; studioMode = ''; render(); };
+    const paperSel = el.querySelector('.paper');
+    if (paperSel) paperSel.onchange = e => { it.paper = e.target.value; pending.paper = e.target.value; sel = i; studioMode = ''; render(); };
     bindSizeGroup(el, size => { it.size = size; pending.size = size; sel = i; studioMode = ''; render(); });
     el.addEventListener('click', ev => { if (ev.target.closest('button,select,input,a')) return; sel = i; studioMode = ''; render(); });
     el.querySelector('.qty').oninput = e => {
@@ -372,15 +397,20 @@ function fitFrame(frame, size, flyer) {
 }
 function updatePreview() {
   const frame = $('#live-frame'), img = $('#live-preview'), finEl = $('#live-fin'), sizeEl = $('#live-size');
+  const paperWrap = $('#live-paper-wrap'), paperEl = $('#live-paper');
   if (!frame || !img) return;
   const c = ctx();
   const it = c.item;
   img.src = it ? it.url : 'img/hero.jpg';
   const glossy = /glossy/i.test(c.fin || '');
+  const satin = /satin/i.test(c.fin || '');
   frame.classList.toggle('glossy', glossy && c.type !== 'flyers');
-  frame.classList.toggle('matte', !glossy || c.type === 'flyers');
+  frame.classList.toggle('satin', satin && c.type !== 'flyers');
+  frame.classList.toggle('matte', (!glossy && !satin) || c.type === 'flyers');
   fitFrame(frame, c.size, c.type === 'flyers');
   if (finEl) finEl.textContent = c.type === 'flyers' ? 'Standard' : (c.fin || '—');
+  if (paperWrap) paperWrap.hidden = c.type !== 'invitations';
+  if (paperEl) paperEl.textContent = c.paper || '';
   if (sizeEl) sizeEl.textContent = c.type === 'flyers' ? (Number.isInteger(c.qty) ? c.qty + ' flyers' : 'Flyers') : pretty(c.size).replace(/\s*\(.*/, '');
   document.querySelectorAll('.item').forEach((el, i) => el.classList.toggle('active', i === sel));
   syncSizePressed();
@@ -445,7 +475,7 @@ $('#f').onsubmit = async e => {
     $('#pay').textContent = 'Placing order…';
     const fd = new FormData($('#f'));
     fd.append('uploads', JSON.stringify(srcs.map(it => uploadIds.get(it.src))));
-    fd.append('items', JSON.stringify(list.map(it => ({ finish: keyOf(it), size: it.size, qty: it.qty, fileIndex: srcs.findIndex(o => o.src === it.src) }))));
+    fd.append('items', JSON.stringify(list.map(it => ({ finish: keyOf(it), size: it.size, qty: it.qty, paper: it.type === 'invitations' ? paperOf(it) : undefined, fileIndex: srcs.findIndex(o => o.src === it.src) }))));
     fd.append('payMethod', payMethod());
     const r = await fetch('/api/orders', { method: 'POST', body: fd }), j = await r.json();
     if (!r.ok) {

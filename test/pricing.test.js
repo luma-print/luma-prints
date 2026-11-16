@@ -14,6 +14,7 @@ test('photo catalog keeps all 21 sizes and prices', () => {
   assert.deepEqual(PRICES.standard.sizes, PHOTO);
   assert.equal(Object.keys(PRICES.standard.sizes).length, 21);
   assert.equal(PRICES.glossy.sizes, PRICES.standard.sizes);
+  assert.equal(PRICES.satin.sizes, PRICES.standard.sizes);
   assert.equal(PRICES.invitations_glossy.sizes, PRICES.invitations_matte.sizes);
 });
 
@@ -69,6 +70,10 @@ test('server pricing ignores client unit and uses the catalog', () => {
   const glossy = priceOrderItem({ finish: 'glossy', size: '8x10', qty: 3, unit: 0 });
   assert.equal(glossy.unit, 4);
   assert.equal(glossy.lineTotal, 12);
+  const satin = priceOrderItem({ finish: 'satin', size: '8x10', qty: 3, unit: 0 });
+  assert.equal(satin.unit, 4);
+  assert.equal(satin.lineTotal, 12);
+  assert.equal(priceOrderItem({ finish: 'satin', size: 'nope', qty: 1 }).ok, false);
   const flyer = priceOrderItem({ finish: 'flyers', size: '16x20', qty: 25, unit: 0.05, lineTotal: 1.25 });
   assert.equal(flyer.priceTBD, true);
   assert.equal(flyer.unit, null);
@@ -81,4 +86,35 @@ test('server pricing ignores client unit and uses the catalog', () => {
   const invite = priceOrderItem({ finish: 'invitations_matte', size: '5x7 (Pack of 25)', qty: 2, unit: 1 });
   assert.equal(invite.unit, 18);
   assert.equal(invite.lineTotal, 36);
+});
+
+test('invitation pack prices stay the same for both card stock weights', () => {
+  assert.deepEqual(PRICES.invitations_matte.papers, ['Card stock 100 lb', 'Card stock 120 lb']);
+  assert.equal(PRICES.invitations_glossy.papers, PRICES.invitations_matte.papers);
+  assert.deepEqual(PRICES.invitations_matte.sizes, {
+    '4x6 (Pack of 25)': 17.00,
+    '5x7 (Pack of 25)': 18.00,
+    '5x7 (Pack of 50)': 36.00,
+    '5x7 (Pack of 75)': 54.00,
+    '5x7 (Pack of 100)': 72.00,
+    '4x8 (Pack of 25)': 18.00,
+    '4x8 (Pack of 50)': 36.00,
+    '4x8 (Pack of 75)': 54.00,
+    '4x8 (Pack of 100)': 72.00
+  });
+  const a = priceOrderItem({ finish: 'invitations_matte', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 100 lb' });
+  const b = priceOrderItem({ finish: 'invitations_glossy', size: '5x7 (Pack of 25)', qty: 2, paper: 'Card stock 120 lb', unit: 1 });
+  assert.equal(a.ok && b.ok, true);
+  assert.equal(a.unit, 18);
+  assert.equal(b.unit, 18);
+  assert.equal(a.lineTotal, 36);
+  assert.equal(b.lineTotal, 36);
+});
+
+test('satin is a photo finish only, at the matte price', () => {
+  assert.equal(PRICES.satin.label, 'Photo Print (Satin)');
+  assert.equal(PRICES.satin.product, 'photo');
+  assert.equal(PRICES.satin.finish, 'Satin');
+  assert.equal(PRICES.invitations_matte.finish, 'Matte');
+  assert.equal(PRICES.invitations_glossy.finish, 'Glossy');
 });

@@ -139,7 +139,8 @@ function preview() {
   else if (img && !file) img.src = 'img/hero.jpg';
   if (frame) {
     frame.classList.toggle('glossy', /glossy/i.test(fin) && type !== 'flyers');
-    frame.classList.toggle('matte', type === 'flyers' || !/glossy/i.test(fin));
+    frame.classList.toggle('satin', /satin/i.test(fin) && type !== 'flyers');
+    frame.classList.toggle('matte', type === 'flyers' || (!/glossy/i.test(fin) && !/satin/i.test(fin)));
   }
   fitFrame(size, type === 'flyers');
   const finEl = document.getElementById('live-fin');
