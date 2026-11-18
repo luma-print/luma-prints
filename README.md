@@ -81,7 +81,7 @@ Note: Gmail allows ~500 emails/day from a personal account — plenty for a smal
 Netlify site → **Site configuration → Forms → Form notifications → Add notification → Email notification** → event "New form submission", form **Any form** (or add one each for `order` and `contact`) → email **Luma.prints1@gmail.com** → Save. Each email contains all form fields; uploaded photos appear as **download links** (not attachments). Submissions also stay under *Forms* in the Netlify dashboard. Also enable *Forms → Form detection* if it is off.
 
 ## Deploy on Render (render.yaml included)
-Render dashboard → **New → Blueprint** (or Web Service) → paste this public repo URL → it reads `render.yaml`. Fill in the secret values when prompted (`ADMIN_PASSWORD`, `BREVO_API_KEY`, optional `STRIPE_SECRET_KEY`), then set `BASE_URL` to the `https://….onrender.com` URL Render gives you and redeploy.
+Render dashboard → **New → Blueprint** (or Web Service) → paste this public repo URL → it reads `render.yaml`. Fill in the secret values when prompted (`ADMIN_PASSWORD`, `BREVO_API_KEY`, optional `STRIPE_SECRET_KEY`), then set `BASE_URL` to `https://www.lumaprintshop.com` and redeploy.
 **Free plan caveat:** free web services have no persistent disk and sleep when idle — uploaded photos/orders stored on the server are wiped on each redeploy/restart. Orders are still emailed to you with photos attached, so the email is your record. For permanent storage upgrade to a paid instance with a Disk mounted at e.g. `/var/data` and set `DATA_DIR=/var/data`.
 
 
